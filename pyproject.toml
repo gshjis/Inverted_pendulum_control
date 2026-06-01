@@ -14,6 +14,10 @@ stable-baselines3 = "^2.8.0"
 torch = {version = "2.4.1", source = "pytorch-cpu"}
 co = {path = "packages/simulation/CO", develop = true}
 pygame = "^2.6.1"
+scipy = "^1.17.1"
+pid = {path = "packages/controllers/PID", develop = true}
+gui = {path = "packages/simulation/GUI", develop = true}
+numba = "^0.65.1"
 
 
 [[tool.poetry.source]]

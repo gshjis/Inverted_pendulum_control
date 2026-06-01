@@ -1,0 +1,85 @@
+"""
+Основной скрипт симуляции перевёрнутого маятника с PID-регулятором.
+
+Содержит конфигурации маятника, датчиков, шумов и регулятора.
+Запускает pygame-визуализацию с управлением от PID.
+"""
+
+from __future__ import annotations
+
+import sys
+
+from packages.simulation.CO.datatypes import State
+import numpy as np
+import pygame
+
+from packages.simulation.CO import (
+    ControllerConfig,
+    MeasuredState,
+    NoiseForce,
+    ObjectOfControl,
+    PlantConfig,
+    SensorBlock,
+    SensorConfig,
+)
+from packages.controllers.PID import PIDController
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Конфигурация маятника (PlantConfig)
+# ═══════════════════════════════════════════════════════════════════════════
+
+PLANT_CONFIG = PlantConfig(
+    M=1.0,          # масса тележки, кг
+    m1=0.3,         # масса маятника, кг
+    m2=0.0,         # второе звено отключено
+    l1=1.0,         # длина маятника, м
+    l2=0.0,
+    L1=0.7,         # расстояние до ЦМ маятника, м
+    L2=0.0,
+    J1=0.02,        # момент инерции маятника, кг·м²
+    J2=0.0,
+    g=-9.81,         # ускорение свободного падения, м/с²
+    b_c=0.05,       # вязкое трение тележки
+    b_1=0.5,      # вязкое трение в шарнире
+    b_2=0.0,
+    single_pendulum_mode=True,   # однозвенный режим
+    backslash_mode=False,        # люфт выключен
+    init_q=(0.0, np.pi, 0.0),   # маятник вверху
+    init_dq=(0.0, 0.0, 0.0),
+)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Конфигурация датчиков и шумов (SensorConfig)
+# ═══════════════════════════════════════════════════════════════════════════
+
+SENSOR_CONFIG = SensorConfig(
+    encoder_resolution_1=4096,     # 12 бит
+    encoder_resolution_2=4096,     # 12 бит
+    cart_sensor_resolution=0.0001, # шаг оптической линейки, м
+    noise_std_q=(0.001, 0.005, 0.005),   # СКО шума координат
+    noise_std_dq=(0.01, 0.02, 0.02),     # СКО шума скоростей
+)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Конфигурация PID-регулятора (ControllerConfig)
+# ═══════════════════════════════════════════════════════════════════════════
+
+CONTROLLER_CONFIG = ControllerConfig(
+    dt=0.005,                    # такт УУ 200 Гц
+    max_force=30.0,              # макс. сила мотора, Н
+    has_velocity_sensors=False,  
+    differentiator_cutoff_hz=None,
+    filter_cutoff_hz=1,
+    gains=[100.008,10.5945 ,11.9052,-2.3334]
+)
+
+PID = PIDController(CONTROLLER_CONFIG)
+# PID.train(PLANT_CONFIG, SENSOR_CONFIG,max_time=30, target_state=State(0, np.pi, 0))
+
+from packages.simulation.GUI import PendulumViewer
+
+window = PendulumViewer(
+    PLANT_CONFIG, SENSOR_CONFIG, NoiseForce(value=0.01),PID
+)
+window.use()

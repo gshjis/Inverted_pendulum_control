@@ -1,6 +1,8 @@
 import numpy as np
 from numpy.typing import NDArray
 
+from .datatypes import SensorConfig
+
 
 class NoiseGenerator:
     """
@@ -51,43 +53,26 @@ class SensorBlock:
     # Конструктор
     # ──────────────────────────────────────────────────────────────────────
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: SensorConfig) -> None:
         """
         Parameters
         ----------
-        config : dict
-            Словарь конфигурации со следующими ключами:
-
-            - **encoder_resolution_1** : ``int``
-                Разрядность энкодера первого звена (импульсов на оборот).
-            - **encoder_resolution_2** : ``int``
-                Разрядность энкодера второго звена.
-            - **cart_sensor_resolution** : ``float``
-                Дискретность датчика положения каретки (м).
-            - **noise_std_q** : ``Array[float]``
-                СКО белого шума для каналов ``[x, θ₁, θ₂]``.
-            - **noise_std_dq** : ``Array[float]``
-                СКО белого шума для каналов ``[ẋ, θ̇₁, θ̇₂]``.
-            - **seed** : ``int``, optional
-                Seed для воспроизводимости генератора шума.
+        config : SensorConfig
+            Типизированная конфигурация датчиков и шумов.
         """
-        # Разрешающая способность датчиков
-        self._encoder_res_1: int = int(config["encoder_resolution_1"])
-        self._encoder_res_2: int = int(config["encoder_resolution_2"])
-        self._cart_res: float = float(config["cart_sensor_resolution"])
+        self._encoder_res_1: int = config.encoder_resolution_1
+        self._encoder_res_2: int = config.encoder_resolution_2
+        self._cart_res: float = config.cart_sensor_resolution
 
-        # Предвычисленные шаги квантования
         self._angle_step_1: float = 2.0 * np.pi / self._encoder_res_1
         self._angle_step_2: float = 2.0 * np.pi / self._encoder_res_2
         self._cart_step: float = self._cart_res
 
-        # Генератор измерительного шума
-        noise_std_q = np.asarray(config["noise_std_q"], dtype=np.float64)   # [x, θ₁, θ₂]
-        noise_std_dq = np.asarray(config["noise_std_dq"], dtype=np.float64)  # [ẋ, θ̇₁, θ̇₂]
-        full_std = np.concatenate([noise_std_q, noise_std_dq])               # [x, θ₁, θ₂, ẋ, θ̇₁, θ̇₂]
+        noise_std_q = np.asarray(config.noise_std_q, dtype=np.float64)
+        noise_std_dq = np.asarray(config.noise_std_dq, dtype=np.float64)
+        full_std = np.concatenate([noise_std_q, noise_std_dq])
 
-        seed: int | None = config.get("seed", None)
-        self._noise_generator = NoiseGenerator(full_std, seed=seed)
+        self._noise_generator = NoiseGenerator(full_std, seed=config.seed)
 
     # ──────────────────────────────────────────────────────────────────────
     # Свойства

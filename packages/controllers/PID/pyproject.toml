@@ -1,12 +1,15 @@
 [tool.poetry]
 name = "pid"
 version = "0.1.0"
-description = ""
+description = "PID controller baseline for inverted pendulum"
 authors = ["gshjis <ilya.togan@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
+numpy = "^2.4.6"
+scipy = "^1.15.0"
+co = {path = "../../simulation/CO", develop = true}
 
 
 [build-system]
