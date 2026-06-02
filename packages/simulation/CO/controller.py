@@ -5,7 +5,14 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.typing import NDArray
 
-from .datatypes import ControllerConfig, MeasuredState, State, StateDot
+from .datatypes import (
+    ControllerConfig,
+    MeasuredState,
+    PlantConfig,
+    SensorConfig,
+    State,
+    StateDot,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -270,10 +277,10 @@ class Controller(ABC):
             Идеальная управляющая сила ``F_ideal`` (Н).
         """
         # ── 1. Координаты ──────────────────────────────────────────────
-        error = State(
-            x=target_state.x - measured_state.x,
-            theta1=target_state.theta1 - measured_state.theta1,
-            theta2=target_state.theta2 - measured_state.theta2
+        ms = State(
+            x=measured_state.x,
+            theta1=measured_state.theta1,
+            theta2=measured_state.theta2
         )
 
         # ── 2. Скорости ────────────────────────────────────────────────
@@ -284,13 +291,13 @@ class Controller(ABC):
                 theta2_dot=measured_state.theta2_dot,
             )
         else:
-            velocities = self._differentiator.calculate_velocity(error)
+            velocities = self._differentiator.calculate_velocity(ms)
 
         # ── 3. Фильтрация ──────────────────────────────────────────────
         full = MeasuredState(
-            x=error.x,
-            theta1=error.theta1,
-            theta2=error.theta2,
+            x=ms.x,
+            theta1=ms.theta1,
+            theta2=ms.theta2,
             x_dot=velocities.x_dot,
             theta1_dot=velocities.theta1_dot,
             theta2_dot=velocities.theta2_dot,
@@ -298,7 +305,7 @@ class Controller(ABC):
         s_clean = self._signal_filter.filter_signal(full)
 
         # ── 4. Закон управления (абстрактный) ──────────────────────────
-        F_raw = self.get_action(s_clean)
+        F_raw = self.get_action(s_clean, target_state)
 
         # ── 5. Насыщение ───────────────────────────────────────────────
         F_clipped = float(np.clip(F_raw, -self._max_force, self._max_force))
@@ -310,7 +317,7 @@ class Controller(ABC):
     # ── Абстрактный метод (закон управления) ──────────────────────────────
 
     @abstractmethod
-    def get_action(self, s_clean: MeasuredState) -> float:
+    def get_action(self, s_clean: MeasuredState, target_state:State) -> float:
         """
         Абстрактный метод вычисления управляющего воздействия.
 

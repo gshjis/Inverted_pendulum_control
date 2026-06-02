@@ -71,15 +71,15 @@ CONTROLLER_CONFIG = ControllerConfig(
     has_velocity_sensors=False,  
     differentiator_cutoff_hz=None,
     filter_cutoff_hz=1,
-    gains=[100.008,10.5945 ,11.9052,-2.3334]
+    gains=[128.22, 29, 13, -0.0038]
 )
 
 PID = PIDController(CONTROLLER_CONFIG)
-# PID.train(PLANT_CONFIG, SENSOR_CONFIG,max_time=30, target_state=State(0, np.pi, 0))
+# PID.train(PLANT_CONFIG, SENSOR_CONFIG,max_time=30, target_state=State(4, np.pi, 0))
 
 from packages.simulation.GUI import PendulumViewer
 
 window = PendulumViewer(
-    PLANT_CONFIG, SENSOR_CONFIG, NoiseForce(value=0.01),PID
+    PLANT_CONFIG, SENSOR_CONFIG, NoiseForce(value=0.01),PID, target_state=State(-0.2, np.pi, 0)
 )
 window.use()

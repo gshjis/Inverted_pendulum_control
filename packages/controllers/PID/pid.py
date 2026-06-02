@@ -44,10 +44,10 @@ class PIDController(Controller):
 
     # ── Закон управления ──────────────────────────────────────────────────
 
-    def get_action(self, s_clean: MeasuredState) -> float:
-        x = s_clean.x
-        th1 = s_clean.theta1
-        dth1 = s_clean.theta1_dot
+    def get_action(self, s_clean: MeasuredState, target_state:State) -> float:
+        x = target_state.x - s_clean.x
+        th1 = target_state.theta1 - s_clean.theta1
+        dth1 = -s_clean.theta1_dot
 
         self._integral += th1 * self._dt
 
@@ -72,7 +72,7 @@ class PIDController(Controller):
         plant_config: PlantConfig,
         sensor_config: SensorConfig,
         *,
-        alpha: float = 10.0,
+        alpha: float = 1.0,
         max_time: float = 10.0,
         method_options: dict[str, Any] | None = None,
         target_state:State
