@@ -41,7 +41,7 @@ PLANT_CONFIG = PlantConfig(
     J2=0.0,
     g=-9.81,         # ускорение свободного падения, м/с²
     b_c=0.05,       # вязкое трение тележки
-    b_1=0.5,      # вязкое трение в шарнире
+    b_1=0.05,      # вязкое трение в шарнире
     b_2=0.0,
     single_pendulum_mode=True,   # однозвенный режим
     backslash_mode=False,        # люфт выключен
@@ -71,15 +71,12 @@ CONTROLLER_CONFIG = ControllerConfig(
     has_velocity_sensors=False,  
     differentiator_cutoff_hz=None,
     filter_cutoff_hz=1,
-    gains=[128.6207, 30.1781, 13.52, -0.0036]
+    gains=[0, 0, 0, 0]
 )
-
-PID = PIDController(CONTROLLER_CONFIG)
-# PID.train(PLANT_CONFIG, SENSOR_CONFIG,max_time=60, target_state=State(4, np.pi, 0), alpha=3)
 
 from packages.simulation.GUI import PendulumViewer
 
 window = PendulumViewer(
-    PLANT_CONFIG, SENSOR_CONFIG, NoiseForce(value=0.02),PID, target_state=State(0.2, np.pi, 0)
+    PLANT_CONFIG, SENSOR_CONFIG, NoiseForce(value=0.0), target_state=State(0, np.pi, 0)
 )
 window.use()

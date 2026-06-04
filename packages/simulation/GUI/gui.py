@@ -105,7 +105,7 @@ class PendulumViewer:
         """Запустить главный цикл визуализации (блокирующий)."""
         running = True
         manual_force = 0.0
-        force_per_frame = 80.0
+        force_per_frame = 20.0
 
         while running:
             # ── События ────────────────────────────────────────────────
