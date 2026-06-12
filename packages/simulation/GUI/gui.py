@@ -96,6 +96,8 @@ class PendulumViewer:
         self._motor_inertia = MotorInertia(time_constant=0.1) if controller is None else None
         self._terminated = False
         self._elapsed_when_terminated: int | None = None
+        # Logger (опционально) — удалён: логгер полностью отключён
+        self._logger = None
 
         # Pygame
         pygame.init()
@@ -118,13 +120,55 @@ class PendulumViewer:
 
     def use(self) -> None:
         """Запустить главный цикл визуализации (блокирующий)."""
-        # Перед стартом спросим в консоли, нужна ли запись
-        try:
-            ans = input("Record simulation to video? (y/N): ").strip().lower()
-        except Exception:
-            ans = "n"
-        if ans == "y":
-            # включить запись и создать папку
+        # Перед стартом показать GUI-диалог для подтверждения записи (в окне pygame)
+        def _ask_recording() -> bool:
+            # Отрисовать простое окно с текстом и ожидать Y/N клавишу или клик по кнопкам
+            asking = True
+            choice = False
+            font = pygame.font.SysFont("Consolas", 20, bold=True)
+            # Прямоугольник диалога
+            dialog_w, dialog_h = 520, 140
+            dialog_rect = pygame.Rect((WIDTH - dialog_w) // 2, (HEIGHT - dialog_h) // 2, dialog_w, dialog_h)
+            btn_yes = pygame.Rect(dialog_rect.right - 180, dialog_rect.bottom - 50, 70, 32)
+            btn_no = pygame.Rect(dialog_rect.right - 90, dialog_rect.bottom - 50, 70, 32)
+
+            while asking:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        return False
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_y:
+                            return True
+                        if event.key == pygame.K_n or event.key == pygame.K_ESCAPE:
+                            return False
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        mx, my = event.pos
+                        if btn_yes.collidepoint(mx, my):
+                            return True
+                        if btn_no.collidepoint(mx, my):
+                            return False
+
+                # Рисуем диалог
+                self._screen.fill(BLACK)
+                pygame.draw.rect(self._screen, (30, 30, 30), dialog_rect)
+                txt = font.render("Record simulation to video?", True, GREEN)
+                self._screen.blit(txt, (dialog_rect.x + 20, dialog_rect.y + 20))
+                hint = font.render("Press Y / N or click a button", True, GRAY)
+                self._screen.blit(hint, (dialog_rect.x + 20, dialog_rect.y + 60))
+
+                pygame.draw.rect(self._screen, (50, 120, 50), btn_yes)
+                pygame.draw.rect(self._screen, (120, 50, 50), btn_no)
+                yes_s = font.render("Yes", True, WHITE)
+                no_s = font.render("No", True, WHITE)
+                self._screen.blit(yes_s, (btn_yes.x + 18, btn_yes.y + 6))
+                self._screen.blit(no_s, (btn_no.x + 22, btn_no.y + 6))
+
+                pygame.display.flip()
+                self._clock.tick(FPS)
+
+            return choice
+
+        if _ask_recording():
             import tempfile
 
             d = tempfile.mkdtemp(prefix="pendulum_rec_", dir=self._record_dir)
@@ -134,7 +178,16 @@ class PendulumViewer:
             self._need_compile = True
         else:
             self._recording = False
-
+        # Если логгер передан — запустить его (matplotlib окно) до основного цикла
+        try:
+            if self._logger is not None:
+                # старт логера должен быть неблокирующим
+                try:
+                    self._logger.start()
+                except Exception:
+                    pass
+        except Exception:
+            pass
         running = True
         manual_force = 0.0
         force_per_frame = 20.0
@@ -228,6 +281,18 @@ class PendulumViewer:
                         for __ in range(max(1, steps_ph)):
                             self._plant.update_physics(F, self._noise, PHYSICS_DT)
 
+                        # Отправить данные в логер (неблокирующий вызов)
+                        try:
+                            if self._logger is not None:
+                                elapsed_ms = pygame.time.get_ticks() - self._start_ticks
+                                # Истинное состояние
+                                true_q = self._plant.q.copy()
+                                true_dq = self._plant.dq.copy()
+                                # Передаём только реальные значения (без показаний датчиков)
+                                self._logger.push(elapsed_ms / 1000.0, true_q, true_dq, force=F)
+                        except Exception:
+                            pass
+
                     viz_force = F
                 else:
                     # между управляющими тактами — визуализация без обновления управления/физики
@@ -251,8 +316,15 @@ class PendulumViewer:
                     # Зафиксировать прошедшее время при остановке
                     self._elapsed_when_terminated = pygame.time.get_ticks() - self._start_ticks
 
-            # ── Отрисовка ──────────────────────────────────────────────
+        # ── Отрисовка ──────────────────────────────────────────────
             self._draw(viz_force)
+
+            # Обновить графики логгера (если он есть)
+            try:
+                if self._logger is not None:
+                    self._logger.render()
+            except Exception:
+                pass
 
             # Сохранение кадра при записи (каждый кадр цикла)
             if self._recording and self._record_dir is not None:
@@ -285,27 +357,78 @@ class PendulumViewer:
                 frames = sorted(glob.glob(os.path.join(self._record_dir, "frame_*.png")))
             except Exception:
                 frames = []
-
             if frames:
-                try:
-                    ans = input(f"Save recorded video from {len(frames)} frames? (Y/n): ").strip().lower()
-                except Exception:
-                    ans = "y"
+                # Показать GUI-диалог для подтверждения сохранения видео
+                def _ask_save_video(n_frames: int) -> bool:
+                    asking = True
+                    font = pygame.font.SysFont("Consolas", 18, bold=True)
+                    dialog_w, dialog_h = 560, 140
+                    dialog_rect = pygame.Rect((WIDTH - dialog_w) // 2, (HEIGHT - dialog_h) // 2, dialog_w, dialog_h)
+                    btn_yes = pygame.Rect(dialog_rect.right - 180, dialog_rect.bottom - 50, 70, 32)
+                    btn_no = pygame.Rect(dialog_rect.right - 90, dialog_rect.bottom - 50, 70, 32)
 
-                if ans == "" or ans == "y":
-                    # скомпилировать и затем удалить кадры, оставив только ролик
-                    try:
-                        self._compile_video(self._record_dir, FPS)
-                        # удалить png-файлы
-                        for p in frames:
-                            try:
-                                os.remove(p)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
+                    while asking:
+                        for event in pygame.event.get():
+                            if event.type == pygame.QUIT:
+                                return False
+                            if event.type == pygame.KEYDOWN:
+                                if event.key == pygame.K_y:
+                                    return True
+                                if event.key == pygame.K_n or event.key == pygame.K_ESCAPE:
+                                    return False
+                            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                                mx, my = event.pos
+                                if btn_yes.collidepoint(mx, my):
+                                    return True
+                                if btn_no.collidepoint(mx, my):
+                                    return False
+
+                        # Рисуем диалог
+                        self._screen.fill(BLACK)
+                        pygame.draw.rect(self._screen, (30, 30, 30), dialog_rect)
+                        txt = font.render(f"Save recorded video from {n_frames} frames?", True, GREEN)
+                        self._screen.blit(txt, (dialog_rect.x + 20, dialog_rect.y + 20))
+                        hint = font.render("Press Y / N or click a button", True, GRAY)
+                        self._screen.blit(hint, (dialog_rect.x + 20, dialog_rect.y + 60))
+
+                        pygame.draw.rect(self._screen, (50, 120, 50), btn_yes)
+                        pygame.draw.rect(self._screen, (120, 50, 50), btn_no)
+                        yes_s = font.render("Yes", True, WHITE)
+                        no_s = font.render("No", True, WHITE)
+                        self._screen.blit(yes_s, (btn_yes.x + 18, btn_yes.y + 6))
+                        self._screen.blit(no_s, (btn_no.x + 22, btn_no.y + 6))
+
+                        pygame.display.flip()
+                        self._clock.tick(FPS)
+
+                    return False
+
+                try:
+                    if _ask_save_video(len(frames)):
+                        # скомпилировать и затем удалить кадры, оставив только ролик
+                        try:
+                            self._compile_video(self._record_dir, FPS)
+                            # удалить png-файлы
+                            for p in frames:
+                                try:
+                                    os.remove(p)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
         pygame.quit()
+        # Остановить логгер и закрыть окна графиков
+        try:
+            if self._logger is not None:
+                try:
+                    self._logger.stop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
         sys.exit(0)
 
     # ── Сброс ─────────────────────────────────────────────────────────────

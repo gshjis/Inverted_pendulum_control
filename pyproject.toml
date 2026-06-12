@@ -19,6 +19,7 @@ pid = {path = "packages/controllers/PID", develop = true}
 gui = {path = "packages/simulation/GUI", develop = true}
 numba = "^0.65.1"
 ffmpeg = "^1.4"
+logger = {path = "packages/logger", develop = true}
 
 [[tool.poetry.source]]
 name = "pytorch-cpu"

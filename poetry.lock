@@ -495,6 +495,19 @@ files = [
 ]
 
 [[package]]
+name = "logger"
+version = "0.1.0"
+description = ""
+optional = false
+python-versions = "^3.12"
+files = []
+develop = true
+
+[package.source]
+type = "directory"
+url = "packages/logger"
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -1276,4 +1289,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "8d3dec355789d3fa13287f9e1da228005c9a4bbe0d420e24be7d284cdf6c656d"
+content-hash = "7c4763d20158ca1147be134ad7a0f5880fa8ffc28f8c91ff8e171c6fd2f91b64"
