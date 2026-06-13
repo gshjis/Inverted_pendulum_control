@@ -90,14 +90,12 @@ class PendulumViewer:
         self._sensor = SensorBlock(sensor_config)
         self._noise = noise
         self._controller = controller
-        self._target = target_state or State(x=0.0, theta1=np.pi, theta2=0.0)
+        self._target = target_state or MeasuredState(x=0.0, theta1=np.pi, theta2=0.0)
         self._terminate_condition = terminate_condition
 
         self._motor_inertia = MotorInertia(time_constant=0.1) if controller is None else None
         self._terminated = False
         self._elapsed_when_terminated: int | None = None
-        # Logger (опционально) — удалён: логгер полностью отключён
-        self._logger = None
 
         # Pygame
         pygame.init()
@@ -106,7 +104,7 @@ class PendulumViewer:
         self._font = pygame.font.SysFont("Consolas", 16, bold=True)
 
         title = "Перевёрнутый маятник"
-        title += " — PID-регулятор" if controller else " — ручное управление"
+        title += f" — {controller.name}" if controller else " — ручное управление"
         title += "  (Пробел сброс, Q / ESC выход)"
         pygame.display.set_caption(title)
         # Запись видео — папка по умолчанию: корень проекта (абсолютный путь)
@@ -178,16 +176,6 @@ class PendulumViewer:
             self._need_compile = True
         else:
             self._recording = False
-        # Если логгер передан — запустить его (matplotlib окно) до основного цикла
-        try:
-            if self._logger is not None:
-                # старт логера должен быть неблокирующим
-                try:
-                    self._logger.start()
-                except Exception:
-                    pass
-        except Exception:
-            pass
         running = True
         manual_force = 0.0
         force_per_frame = 20.0
@@ -283,18 +271,6 @@ class PendulumViewer:
                         for __ in range(max(1, steps_ph)):
                             self._plant.update_physics(F, self._noise, PHYSICS_DT)
 
-                        # Отправить данные в логер (неблокирующий вызов)
-                        try:
-                            if self._logger is not None:
-                                elapsed_ms = pygame.time.get_ticks() - self._start_ticks
-                                # Истинное состояние
-                                true_q = self._plant.q.copy()
-                                true_dq = self._plant.dq.copy()
-                                # Передаём только реальные значения (без показаний датчиков)
-                                self._logger.push(elapsed_ms / 1000.0, true_q, true_dq, force=F)
-                        except Exception:
-                            pass
-
                     viz_force = F
                 else:
                     # между управляющими тактами — визуализация без обновления управления/физики
@@ -320,13 +296,6 @@ class PendulumViewer:
 
         # ── Отрисовка ──────────────────────────────────────────────
             self._draw(viz_force)
-
-            # Обновить графики логгера (если он есть)
-            try:
-                if self._logger is not None:
-                    self._logger.render()
-            except Exception:
-                pass
 
             # Сохранение кадра при записи (каждый кадр цикла)
             # Сохраняем кадры синхронно с управляющим тактом (чтобы в видео fps == симуляции)
@@ -471,15 +440,6 @@ class PendulumViewer:
                     pass
 
         pygame.quit()
-        # Остановить логгер и закрыть окна графиков
-        try:
-            if self._logger is not None:
-                try:
-                    self._logger.stop()
-                except Exception:
-                    pass
-        except Exception:
-            pass
         sys.exit(0)
 
     # ── Сброс ─────────────────────────────────────────────────────────────

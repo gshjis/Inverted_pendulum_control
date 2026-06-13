@@ -207,13 +207,14 @@ class Controller(ABC):
             ключами для обратной совместимости.
         """
         # ── Извлечение параметров ─────────────────────────────────────
-    
+
         _dt = config.dt
         _max_force = config.max_force
         _has_vel = config.has_velocity_sensors
         _diff_cutoff = config.differentiator_cutoff_hz
         _filter_cutoff = config.filter_cutoff_hz
 
+        self.name:str
         self._dt = _dt
         self._max_force = _max_force
         self._has_velocity_sensors = _has_vel

@@ -20,6 +20,7 @@ from packages.simulation.CO import (
 class PIDController(Controller):
     def __init__(self, config: ControllerConfig) -> None:
         super().__init__(config)
+        self.name = "PID"
 
         if isinstance(config, ControllerConfig):
             gains = config.gains
