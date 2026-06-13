@@ -77,12 +77,26 @@ def draw_hud(screen: pygame.Surface, font: pygame.font.Font, lines: list[str]) -
 
 
 def draw_record_button(screen: pygame.Surface, font: pygame.font.Font, recording: bool) -> None:
-    rec_text = "REC" if recording else "REC"
-    rec_color = RED if recording else GRAY
-    btn_rect = (WIDTH - 120, 10, 110, 28)
-    pygame.draw.rect(screen, (40, 40, 40), btn_rect)
-    rec_surf = font.render(f"[{rec_text}] Record", True, rec_color)
-    screen.blit(rec_surf, (btn_rect[0] + 8, btn_rect[1] + 6))
+    """Record button removed by user request — keep stub for compatibility."""
+    return
+
+
+def draw_controller_button(screen: pygame.Surface, font: pygame.font.Font, enabled: bool) -> None:
+    """Draw controller enable/disable button in the top-right near record button.
+
+    Button moved closer to right edge for visibility.
+    """
+    btn_rect = (WIDTH - 150, 10, 120, 30)
+    # higher-contrast border and fill
+    border = (200, 200, 200)
+    fill_on = (30, 120, 30)
+    fill_off = (80, 80, 80)
+    pygame.draw.rect(screen, border, btn_rect)
+    inner = (btn_rect[0] + 2, btn_rect[1] + 2, btn_rect[2] - 4, btn_rect[3] - 4)
+    pygame.draw.rect(screen, fill_on if enabled else fill_off, inner)
+    label = "CTRL: ON" if enabled else "CTRL: OFF"
+    surf = font.render(label, True, (255, 255, 255) if enabled else (210, 210, 210))
+    screen.blit(surf, (btn_rect[0] + 10, btn_rect[1] + 6))
 
 
 def draw_target_marker(screen: pygame.Surface, cart_x_px: int, cart_y_px: int, color: Tuple[int, int, int], w: int, h: int, value_str: str) -> None:

@@ -31,7 +31,7 @@ from .constants import *
 from .dialogs import ask_recording, ask_save_video
 from .dialogs import ask_recording, ask_save_video, ask_input_target
 from .recorder import compile_video
-from .draw import draw_cart, draw_pendulums, draw_force_arrow, draw_hud, draw_record_button, draw_target_marker
+from .draw import draw_cart, draw_pendulums, draw_force_arrow, draw_hud, draw_record_button, draw_target_marker, draw_controller_button
 from .event_controller import EventController
 from .physics_runner import PhysicsRunner
 
@@ -84,6 +84,7 @@ class PendulumViewer:
 
         # Pygame
         pygame.init()
+        # Открыть окно в оконном режиме (возвращено по запросу)
         self._screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self._clock = pygame.time.Clock()
         self._font = pygame.font.SysFont("Consolas", 16, bold=True)
@@ -122,6 +123,8 @@ class PendulumViewer:
         self._marker_x = float(self._target.x)
         self._marker_dragging = False
         self._last_marker_update_ms = 0
+        # Controller enabled flag (visible button)
+        self._controller_enabled = True if self._controller is not None else False
 
     # ── Публичный метод ───────────────────────────────────────────────────
 
@@ -190,6 +193,55 @@ class PendulumViewer:
             if actions.get("toggle_record", False):
                 # переключить запись
                 self._toggle_recording()
+            if actions.get("toggle_controller", False):
+                # toggle controller via key 'c'
+                self._controller_enabled = not getattr(self, '_controller_enabled', True)
+                if not self._controller_enabled:
+                    self._controller_backup = self._controller
+                    if self._controller is not None and hasattr(self._controller, 'reset'):
+                        try:
+                            self._controller.reset()
+                        except Exception:
+                            pass
+                    self._controller = None
+                else:
+                    self._controller = getattr(self, '_controller_backup', self._controller)
+                    if self._controller is not None and hasattr(self._controller, 'reset'):
+                        try:
+                            self._controller.reset()
+                        except Exception:
+                            pass
+            # переключить контроллер по клику на кнопке (верхняя панель)
+            mx_my = actions.get("mouse_pos")
+            if mx_my:
+                mx, my = mx_my
+                # кнопка теперь рисуется ближе к правому краю (WIDTH - 150)
+                ctrl_btn = (WIDTH - 150, 10, 120, 30)
+                if ctrl_btn[0] <= mx <= ctrl_btn[0] + ctrl_btn[2] and ctrl_btn[1] <= my <= ctrl_btn[1] + ctrl_btn[3]:
+                    # toggle controller enabled flag
+                    self._controller_enabled = not getattr(self, '_controller_enabled', True)
+                    # debug log for click
+                    try:
+                        print(f"[GUI] Controller button clicked -> enabled={self._controller_enabled}")
+                    except Exception:
+                        pass
+                    if not self._controller_enabled:
+                        # disable controller: back it up, reset internals and set to None
+                        self._controller_backup = self._controller
+                        if self._controller is not None and hasattr(self._controller, 'reset'):
+                            try:
+                                self._controller.reset()
+                            except Exception:
+                                pass
+                        self._controller = None
+                    else:
+                        # restore and reset internals
+                        self._controller = getattr(self, '_controller_backup', self._controller)
+                        if self._controller is not None and hasattr(self._controller, 'reset'):
+                            try:
+                                self._controller.reset()
+                            except Exception:
+                                pass
 
             keys = pygame.key.get_pressed()
             if keys[pygame.K_ESCAPE] or keys[pygame.K_q]:
@@ -589,7 +641,8 @@ class PendulumViewer:
             lines.append(gains_str)
 
         draw_hud(self._screen, self._font, lines)
-        draw_record_button(self._screen, self._font, self._recording)
+        # controller enable/disable button
+        draw_controller_button(self._screen, self._font, getattr(self, '_controller_enabled', False))
         # Рисуем маркер цели, только если передан контроллер (в этом режиме GUI управляет target_state.x)
         if self._controller is not None:
             # вычислить пиксельную позицию маркера
@@ -611,10 +664,15 @@ class PendulumViewer:
                 hint = self._font.render("[marker updated]", True, (200, 200, 100))
                 self._screen.blit(hint, (20, HEIGHT - 94))
 
-        # Время и статус
+        # coordinates display removed per user request
+
+        # Время и статус: смещаем влево, чтобы освободить место для кнопки
         elapsed_s = self._get_elapsed_time()
         time_surf = self._font.render(f"Время: {elapsed_s:.2f} с", True, GREEN)
-        self._screen.blit(time_surf, (WIDTH - 220, 20))
+        self._screen.blit(time_surf, (WIDTH - 360, 20))
+
+        # Вывод ошибки (target - текущие измерения) рядом с кнопкой контроллера
+        # Ошибки отключены по запросу пользователя (убрано отображение err_x/err_th)
 
         if self._terminated:
             term_surf = self._font.render("СИМУЛЯЦИЯ ОСТАНОВЛЕНА (Пробел - рестарт)", True, RED)

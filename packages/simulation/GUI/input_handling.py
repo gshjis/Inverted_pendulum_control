@@ -31,13 +31,12 @@ def handle_events(screen: pygame.Surface, clock: pygame.time.Clock) -> Dict[str,
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             actions["mouse_pos"] = (mx, my)
-            # Проверка кнопки записи — правая верхняя область
-            btn_rect = (WIDTH - 120, 10, 110, 28)
-            if btn_rect[0] <= mx <= btn_rect[0] + btn_rect[2] and btn_rect[1] <= my <= btn_rect[1] + btn_rect[3]:
-                actions["toggle_record"] = True
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
                 actions["running"] = False
+            elif event.key == pygame.K_c:
+                # toggle controller with 'c'
+                actions["toggle_controller"] = True
 
     # also return raw events so higher-level controllers can handle modality-specific input
     actions["events"] = events
