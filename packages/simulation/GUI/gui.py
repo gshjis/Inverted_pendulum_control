@@ -197,6 +197,8 @@ class PendulumViewer:
         # Таймеры для управления/физики
         control_interval_ms = int(self._controller._dt * 1000.0) if self._controller is not None else int(1.0 / FPS * 1000.0)
         control_acc_ms = 0
+        # Для сохранения кадров синхронизированно с шагом симуляции
+        last_save_acc_ms = 0
 
         prev_ticks = pygame.time.get_ticks()
 
@@ -327,22 +329,52 @@ class PendulumViewer:
                 pass
 
             # Сохранение кадра при записи (каждый кадр цикла)
+            # Сохраняем кадры синхронно с управляющим тактом (чтобы в видео fps == симуляции)
             if self._recording and self._record_dir is not None:
-                fname = f"frame_{self._frame_index:06d}.png"
-                path = os.path.join(self._record_dir, fname)
+                # аккумулировать прошедшее время для сохранения
+                last_save_acc_ms += dt_ms
                 try:
-                    pygame.image.save(self._screen, path)
-                    # отладочный вывод
-                    # print(f"Saved frame: {path}")
-                    self._frame_index += 1
+                    sim_interval_ms = int(self._controller._dt * 1000.0) if self._controller is not None else int(1.0 / FPS * 1000.0)
                 except Exception:
-                    # если не удалось сохранить кадр, продолжаем без прерывания
-                    pass
+                    sim_interval_ms = int(1.0 / FPS * 1000.0)
+
+                # сохранять один кадр на каждый управляющий такт
+                if last_save_acc_ms >= sim_interval_ms:
+                    last_save_acc_ms = last_save_acc_ms % sim_interval_ms
+                    fname = f"frame_{self._frame_index:06d}.png"
+                    path = os.path.join(self._record_dir, fname)
+                    try:
+                        pygame.image.save(self._screen, path)
+                        self._frame_index += 1
+                    except Exception:
+                        # если не удалось сохранить кадр, продолжаем без прерывания
+                        pass
 
             # Если запись была остановлена и помечена для компиляции — выполнить сборку
             if not self._recording and self._need_compile and self._record_dir is not None:
                 try:
-                    self._compile_video(self._record_dir, FPS)
+                    try:
+                        sim_interval_ms = int(self._controller._dt * 1000.0) if self._controller is not None else int(1.0 / FPS * 1000.0)
+                    except Exception:
+                        sim_interval_ms = int(1.0 / FPS * 1000.0)
+                    # Вычислить фактическую частоту кадров: frames / simulated_seconds
+                    try:
+                        import glob
+
+                        frames = sorted(glob.glob(os.path.join(self._record_dir, "frame_*.png")))
+                        n_frames = len(frames)
+                        # длительность симуляции в секундах — от старта до текущего момента или до остановки
+                        if self._elapsed_when_terminated is not None:
+                            sim_seconds = self._elapsed_when_terminated / 1000.0
+                        else:
+                            sim_seconds = (pygame.time.get_ticks() - self._start_ticks) / 1000.0
+                        if sim_seconds > 0 and n_frames > 0:
+                            sim_fps = max(1, round(n_frames / sim_seconds))
+                        else:
+                            sim_fps = max(1, round(1000.0 / sim_interval_ms))
+                    except Exception:
+                        sim_fps = max(1, round(1000.0 / sim_interval_ms))
+                    self._compile_video(self._record_dir, sim_fps)
                 finally:
                     # сброс состояния
                     self._need_compile = False
@@ -407,7 +439,26 @@ class PendulumViewer:
                     if _ask_save_video(len(frames)):
                         # скомпилировать и затем удалить кадры, оставив только ролик
                         try:
-                            self._compile_video(self._record_dir, FPS)
+                            try:
+                                sim_interval_ms = int(self._controller._dt * 1000.0) if self._controller is not None else int(1.0 / FPS * 1000.0)
+                            except Exception:
+                                sim_interval_ms = int(1.0 / FPS * 1000.0)
+                            try:
+                                import glob
+
+                                frames = sorted(glob.glob(os.path.join(self._record_dir, "frame_*.png")))
+                                n_frames = len(frames)
+                                if self._elapsed_when_terminated is not None:
+                                    sim_seconds = self._elapsed_when_terminated / 1000.0
+                                else:
+                                    sim_seconds = (pygame.time.get_ticks() - self._start_ticks) / 1000.0
+                                if sim_seconds > 0 and n_frames > 0:
+                                    sim_fps = max(1, round(n_frames / sim_seconds))
+                                else:
+                                    sim_fps = max(1, round(1000.0 / sim_interval_ms))
+                            except Exception:
+                                sim_fps = max(1, round(1000.0 / sim_interval_ms))
+                            self._compile_video(self._record_dir, sim_fps)
                             # удалить png-файлы
                             for p in frames:
                                 try:
