@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from .datatypes import MeasuredState, SensorConfig
+from .datatypes import MeasuredState, SensorConfig, State
 
 
 class NoiseGenerator:
@@ -128,7 +128,7 @@ class SensorBlock:
     # ──────────────────────────────────────────────────────────────────────
 
     def get_telemetry(
-        self, raw_q: NDArray[np.float64], raw_dq: NDArray[np.float64]
+        self, raw_q: State, raw_dq: State
     ) -> MeasuredState:
         """
         Преобразовать чистые координаты ОУ в зашумлённый квантованный
@@ -155,8 +155,8 @@ class SensorBlock:
         MeasuredState
             Вектор измеренного состояния.
         """
-        q = np.asarray(raw_q, dtype=np.float64)
-        dq = np.asarray(raw_dq, dtype=np.float64)
+        q = np.asarray(list(raw_q), dtype=np.float64)
+        dq = np.asarray(list(raw_dq), dtype=np.float64)
 
         # 1. Квантование координат
         x_q = self._apply_quantization(q[0], self._cart_step, "cart")

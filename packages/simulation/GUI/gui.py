@@ -22,7 +22,6 @@ from packages.simulation.CO import (
     MotorInertia,
     NoiseForce,
     ObjectOfControl,
-    PlantConfig,
     SensorBlock,
     SensorConfig,
     # State импорт удалён (не используется)
@@ -407,7 +406,7 @@ class PendulumViewer:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
                 # проверим попадание в маркер по пиксельной позиции
-                cart_x_px = int(WIDTH // 2 + self._plant.q[0] * SCALE)
+                cart_x_px = int(WIDTH // 2 + self._plant.q.x * SCALE)
                 cart_y_px = TRACK_Y - CART_H // 2
                 rect = pygame.Rect(cart_x_px - self._marker_w // 2, cart_y_px - self._marker_h, self._marker_w, self._marker_h)
                 if rect.collidepoint(mx, my) and self._controller is not None:
@@ -605,12 +604,12 @@ class PendulumViewer:
         q = self._plant.q
         dq = self._plant.dq
         is_single = self._plant.single_pendulum_mode
-        x = q[0]
-        th1 = q[1]
-        th2 = q[2] if not is_single else 0.0
-        dx = dq[0]
-        dth1 = dq[1]
-        dth2 = dq[2] if not is_single else 0.0
+        x = q.x
+        th1 = q.theta1
+        th2 = q.theta2 if not is_single else 0.0
+        dx = dq.x
+        dth1 = dq.theta1
+        dth2 = dq.theta1 if not is_single else 0.0
 
         cart_x_px = int(WIDTH // 2 + x * SCALE)
         cart_y_px = TRACK_Y - CART_H // 2

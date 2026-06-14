@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import random
+import numpy as np
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Векторы состояния
@@ -25,26 +27,42 @@ class State:
     theta1: float = 0.0
     theta2: float = 0.0
 
+    def copy(self) -> State:
+        """Сделать копию вектора состояния.
 
-@dataclass
-class StateDot:
-    """
-    Вектор обобщённых скоростей ОУ.
+        Возвращает новый экземпляр :class:`State` с теми же значениями.
+        """
+        return State(
+            x=self.x,
+            theta1=self.theta1,
+            theta2=self.theta2,
+        )
 
-    Attributes
-    ----------
-    x_dot : float
-        Скорость тележки (м/с).
-    theta1_dot : float
-        Угловая скорость первого звена (рад/с).
-    theta2_dot : float
-        Угловая скорость второго звена (рад/с).
-    """
+    def __iter__(self):
+        # Поддержка неявного преобразования в списки вида list(State(...))
+        # используется в конфигурационных методах.
+        yield self.x
+        yield self.theta1
+        yield self.theta2
 
-    x_dot: float = 0.0
-    theta1_dot: float = 0.0
-    theta2_dot: float = 0.0
+    def __mul__(self, k: float) -> State:
+        """Умножить состояние на число ``k``."""
+        return State(
+            x=self.x * k,
+            theta1=self.theta1 * k,
+            theta2=self.theta2 * k,
+        )
 
+    def __rmul__(self, k: float) -> State:
+        return self.__mul__(k)
+
+    def __add__(self, other: State) -> State:
+        """Покомпонентное сложение двух [`State`]."""
+        return State(
+            x=self.x + other.x,
+            theta1=self.theta1 + other.theta1,
+            theta2=self.theta2 + other.theta2,
+        )
 
 @dataclass
 class NoiseForce:
@@ -53,32 +71,32 @@ class NoiseForce:
 
     Attributes
     ----------
-    value : float
-        Сила внешнего возмущения (Н).
+    mean : float
+        Математическое ожидание внешнего возмущения (Н).
+    std : float
+        СКО (среднеквадратичное отклонение) внешнего возмущения (Н).
     """
 
-    value: float = 0.0
+    mean: float = 0.0
+    std: float = 0.0
 
+    def get_force(self) -> float:
+        """Сгенерировать случайную силу по нормальному распределению.
 
-@dataclass
-class NoiseConfig:
-    """
-    Конфигурация внешнего возмущения.
-
-    Attributes
-    ----------
-    value : float
-        Сила внешнего возмущения (Н).
-    """
-
-    value: float = 0.0
-
+        Используется параметры ``mean`` и ``std``.
+        """
+        if self.std == 0.0:
+            return self.mean
+        return random.gauss(self.mean, self.std)
 
 @dataclass
 class MeasuredState:
     """
     Вектор измеренного (зашумлённого и/или квантованного) состояния
     системы, поступающий с датчиков или после дифференцирования.
+
+    Может быть собран из :class:`State` и :class:`StateDot` с помощью
+    класс-метода :meth:`from_state_and_dot`.
 
     Attributes
     ----------
@@ -103,7 +121,36 @@ class MeasuredState:
     theta1_dot: float = 0.0
     theta2_dot: float = 0.0
 
-    def __add__(self, other: "MeasuredState") -> "MeasuredState":
+    @classmethod
+    def from_state_and_dot(
+        cls, state: State, state_dot: State
+    ) -> MeasuredState:
+        """
+        Собрать ``MeasuredState`` из вектора обобщённых координат
+        и вектора обобщённых скоростей.
+
+        Parameters
+        ----------
+        state : State
+            Обобщённые координаты ``(x, θ₁, θ₂)``.
+        state_dot : StateDot
+            Обобщённые скорости ``(ẋ, θ̇₁, θ̇₂)``.
+
+        Returns
+        -------
+        MeasuredState
+            Полный вектор измеренного состояния.
+        """
+        return cls(
+            x=state.x,
+            theta1=state.theta1,
+            theta2=state.theta2,
+            x_dot=state_dot.x,
+            theta1_dot=state_dot.theta1,
+            theta2_dot=state_dot.theta2,
+        )
+
+    def __add__(self, other: MeasuredState) -> MeasuredState:
         """Покомпонентное сложение двух MeasuredState."""
         return MeasuredState(
             x=self.x + other.x,
@@ -114,7 +161,7 @@ class MeasuredState:
             theta2_dot=self.theta2_dot + other.theta2_dot,
         )
 
-    def __sub__(self, other: "MeasuredState") -> "MeasuredState":
+    def __sub__(self, other: MeasuredState) -> MeasuredState:
         """Покомпонентное вычитание двух MeasuredState (self - other)."""
         return MeasuredState(
             x=self.x - other.x,
@@ -123,6 +170,42 @@ class MeasuredState:
             x_dot=self.x_dot - other.x_dot,
             theta1_dot=self.theta1_dot - other.theta1_dot,
             theta2_dot=self.theta2_dot - other.theta2_dot,
+        )
+
+    def split(self) -> tuple[State, State]:
+        """Разделить измеренное состояние на координаты и скорости.
+
+        Returns
+        -------
+        tuple[State, StateDot]
+            ``(state, state_dot)``.
+        """
+        state = State(x=self.x, theta1=self.theta1, theta2=self.theta2)
+        state_dot = State(
+            x=self.x_dot,
+            theta1=self.theta1_dot,
+            theta2=self.theta2_dot,
+        )
+        return state, state_dot
+    
+    def __iter__(self):
+        # Поддержка неявного преобразования в списки.
+        yield self.x
+        yield self.theta1
+        yield self.theta2
+        yield self.x_dot
+        yield self.theta1_dot
+        yield self.theta2_dot
+
+    def __mul__(self, k: float) -> MeasuredState:
+        """Умножить состояние на число ``k``."""
+        return MeasuredState(
+            x=self.x * k,
+            theta1=self.theta1 * k,
+            theta2=self.theta2 * k,
+            x_dot=self.x_dot * k,
+            theta1_dot=self.theta1_dot * k,
+            theta2_dot=self.theta2_dot * k,            
         )
 
 
@@ -197,8 +280,8 @@ class PlantConfig:
     backlash_alpha: float = 0.0
     backlash_m_mot: float = 0.0
 
-    init_q: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    init_dq: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    init_q: State = field(default_factory=lambda: State(0.0, np.pi, 0.0))
+    init_dq: State = field(default_factory=lambda: State(0.0, 0.0, 0.0))
 
     def to_dict(self) -> dict:
         """Преобразовать в плоский словарь для ``ObjectOfControl.__init__``."""

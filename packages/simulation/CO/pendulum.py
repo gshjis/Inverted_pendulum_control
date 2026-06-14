@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 
-from .datatypes import NoiseForce, PlantConfig, State, StateDot
+from .datatypes import MeasuredState, NoiseForce, PlantConfig, State
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -107,7 +107,6 @@ class BacklashModel:
 
         return F_real
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 # ObjectOfControl
 # ═══════════════════════════════════════════════════════════════════════════
@@ -155,12 +154,8 @@ class ObjectOfControl:
         self._backslash_mode: bool = config.backslash_mode
 
         # ── Вектор состояния ──────────────────────────────────────────
-        self._q: NDArray[np.float64] = np.asarray(
-            list(config.init_q), dtype=np.float64,
-        )
-        self._dq: NDArray[np.float64] = np.asarray(
-            list(config.init_dq), dtype=np.float64,
-        )
+        self._q: State = config.init_q
+        self._dq: State = config.init_dq
 
         # ── Модель люфта ──────────────────────────────────────────────
         if self._backslash_mode:
@@ -173,12 +168,12 @@ class ObjectOfControl:
     # ──────────────────────────────────────────────────────────────────────
 
     @property
-    def q(self) -> NDArray[np.float64]:
+    def q(self) -> State:
         """Вектор обобщённых координат ``[x, θ₁, θ₂]``."""
         return self._q.copy()
 
     @property
-    def dq(self) -> NDArray[np.float64]:
+    def dq(self) -> State:
         """Вектор обобщённых скоростей ``[ẋ, θ̇₁, θ̇₂]``."""
         return self._dq.copy()
 
@@ -200,10 +195,10 @@ class ObjectOfControl:
     # Вычислительное ядро — уравнения Лагранжа
     # ──────────────────────────────────────────────────────────────────────
 
-    def _compute_lagrange_equations(self, F_total: float) -> NDArray[np.float64]:
+    def _compute_lagrange_equations(self, F_total: float) -> State:
         if self._single_mode:
-            self._q[2] = 0.0
-            self._dq[2] = 0.0
+            self._q.theta2 = 0.0
+            self._dq.theta2 = 0.0
         
         params = np.array([
             self._M, self._m1, self._m2, self._l1, self._l2,
@@ -218,7 +213,7 @@ class ObjectOfControl:
             self._L1, self._L2, self._J1, self._J2, self._g,
             self._b_c, self._b_1, self._b_2
         ])
-        self._q, self._dq = _rk4_step_numba(self._q, self._dq, F_total, dt, params, self._single_mode)
+        self._q, self._dq = _rk4_step_numba(self._q, self._dq, F_total, dt, params, self._single_mode).split()
 
     # ──────────────────────────────────────────────────────────────────────
     # Публичный API
@@ -248,17 +243,17 @@ class ObjectOfControl:
             Шаг интегрирования физики (с).
         """
         if self._backslash_mode and self._backlash is not None:
-            F_real = self._backlash.update(F_ideal, self._dq[0], dt_physics)
+            F_real = self._backlash.update(F_ideal, self._dq.x, dt_physics)
         else:
             F_real = F_ideal
 
-        F_total = F_real + F_noise.value
+        F_total = F_real + F_noise.get_force()
         self._rk4_step(F_total, dt_physics)
 
-    def compute_lagrange_equations(self, F_total: float) -> NDArray[np.float64]:
+    def compute_lagrange_equations(self, F_total: float) -> State:
         return self._compute_lagrange_equations(F_total)
 
-    def get_clean_state(self) -> tuple[State, StateDot]:
+    def get_clean_state(self) -> tuple[State, State]:
         """
         Вернуть абсолютно чистые (неискажённые шумами датчиков)
         координаты и скорости системы.
@@ -268,23 +263,16 @@ class ObjectOfControl:
         tuple[State, StateDot]
             Кортеж ``(q, dq)``.
         """
-        return (
-            State(x=self._q[0], theta1=self._q[1], theta2=self._q[2]),
-            StateDot(
-                x_dot=self._dq[0],
-                theta1_dot=self._dq[1],
-                theta2_dot=self._dq[2],
-            ),
-        )
+        return (self._q, self._dq)
 
-@njit(cache=True)
+# @njit(cache=True)
 def _compute_ddq_numba(
-    q: NDArray[np.float64],
-    dq: NDArray[np.float64],
+    q: State,
+    dq: State,
     F_total: float,
     params: NDArray[np.float64],
     single_mode: bool,
-) -> NDArray[np.float64]:
+) -> State:
     x, th1, th2 = q
     dx, dth1, dth2 = dq
     M, m1, m2, l1, l2, L1, L2, J1, J2, g, b_c, b_1, b_2 = params
@@ -321,35 +309,34 @@ def _compute_ddq_numba(
         if abs(det) > 1e-15:
             ddx = (rhs1 * M22 - M12 * rhs2) / det
             dth1_2 = (M11 * rhs2 - M12 * rhs1) / det
-            return np.array([ddx, dth1_2, 0.0], dtype=np.float64)
-        return np.zeros(3, dtype=np.float64)
+            return State(ddx, dth1_2, 0.0)
+            
+        return State(0.0, 0.0, 0.0)
 
     M_mat = np.array([[M11, M12, M13], [M12, M22, M23], [M13, M23, M33]])
-    return np.linalg.solve(M_mat, np.array([rhs1, rhs2, rhs3]))
+    t = np.linalg.solve(M_mat, np.array([rhs1, rhs2, rhs3]))
+    return State(t[0], t[1], t[2])
 
-@njit(cache=True)
+# @njit(cache=True)
 def _rk4_step_numba(
-    q: NDArray[np.float64],
-    dq: NDArray[np.float64],
+    q: State,
+    dq: State,
     F_total: float,
     dt: float,
     params: NDArray[np.float64],
     single_mode: bool,
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    def get_dot(q_in: NDArray[np.float64], dq_in: NDArray[np.float64]) -> NDArray[np.float64]:
+) -> MeasuredState:
+    def get_dot(q_in: State, dq_in: State) -> MeasuredState:
         ddq = _compute_ddq_numba(q_in, dq_in, F_total, params, single_mode)
         res = np.empty(6, dtype=np.float64)
-        res[:3] = dq_in
-        res[3:] = ddq
+        res = MeasuredState.from_state_and_dot(dq_in, ddq)
         return res
 
-    s = np.empty(6, dtype=np.float64)
-    s[:3] = q
-    s[3:] = dq
+    s = MeasuredState.from_state_and_dot(q, dq)
     k1 = get_dot(q, dq)
-    k2 = get_dot(q + 0.5 * dt * k1[:3], dq + 0.5 * dt * k1[3:])
-    k3 = get_dot(q + 0.5 * dt * k2[:3], dq + 0.5 * dt * k2[3:])
-    k4 = get_dot(q + dt * k3[:3], dq + dt * k3[3:])
+    k2 = get_dot(q + 0.5 * dt * k1.split()[0], dq + 0.5 * dt * k1.split()[1])
+    k3 = get_dot(q + 0.5 * dt * k2.split()[0], dq + 0.5 * dt * k2.split()[0])
+    k4 = get_dot(q + dt * k3.split()[0], dq + dt *  k3.split()[1])
 
-    s_next = s + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-    return s_next[:3], s_next[3:]
+    s_next = s + (k1 + k2 *2.0 + k3 * 2.0  + k4) * (dt / 6.0)
+    return s_next

@@ -6,7 +6,6 @@ from .datatypes import (
     PlantConfig,
     SensorConfig,
     State,
-    StateDot,
 )
 from .engine import MotorInertia
 from .pendulum import BacklashModel, ObjectOfControl
@@ -19,7 +18,6 @@ __all__ = [
     "SignalFilter",
     # datatypes
     "State",
-    "StateDot",
     "MeasuredState",
     "NoiseForce",
     "PlantConfig",

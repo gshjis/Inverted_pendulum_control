@@ -41,8 +41,8 @@ PLANT_CONFIG = PlantConfig(
     b_2=0.00,
     single_pendulum_mode=True,   # двухзвенный режим
     backslash_mode=False,        # люфт выключен
-    init_q=(0.0, np.pi, 0.0),   # маятник вверху
-    init_dq=(0.0, 0.0, 0.0),
+    init_q=State(0.0, np.pi, 0.0),   # маятник вверху
+    init_dq=State(0.0, 0.0, 0.0),
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -90,7 +90,7 @@ plant = ObjectOfControl(PLANT_CONFIG)
 window = PendulumViewer(
     plant,
     SENSOR_CONFIG,
-    NoiseForce(value=0.05),
+    NoiseForce(mean=0.05, std=0.02),
     controller=controller,
     # terminate_condition=lambda p: (abs(p.q[1] - np.pi) > np.radians(45.0)) or (abs(p.q[0]) > 5.0),
     target_state=MeasuredState(0, np.pi, 0),

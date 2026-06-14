@@ -9,7 +9,6 @@ from .datatypes import (
     ControllerConfig,
     MeasuredState,
     State,
-    StateDot,
 )
 from packages.simulation.CO.engine import MotorInertia
 
@@ -50,7 +49,7 @@ class Differentiator:
 
     # ── Основной метод ────────────────────────────────────────────────────
 
-    def calculate_velocity(self, positions: State) -> StateDot:
+    def calculate_velocity(self, positions: State) -> State:
         """
         Вычислить скорость по текущему вектору координат.
 
@@ -61,7 +60,7 @@ class Differentiator:
 
         Returns
         -------
-        StateDot
+        State
             Скорости ``(ẋ, θ̇₁, θ̇₂)``.
         """
         pos = np.array(
@@ -71,7 +70,7 @@ class Differentiator:
 
         if self._prev_positions is None:
             self._prev_positions = pos.copy()
-            return StateDot()
+            return State()
 
         # Сырая производная (backward difference)
         raw_vel = (pos - self._prev_positions) / self._dt
@@ -86,10 +85,10 @@ class Differentiator:
             )
 
         self._prev_positions = pos.copy()
-        return StateDot(
-            x_dot=self._filtered_velocity[0],
-            theta1_dot=self._filtered_velocity[1],
-            theta2_dot=self._filtered_velocity[2],
+        return State(
+            x=self._filtered_velocity[0],
+            theta1=self._filtered_velocity[1],
+            theta2=self._filtered_velocity[2],
         )
 
     # ── Сброс ─────────────────────────────────────────────────────────────
@@ -307,10 +306,10 @@ class Controller(ABC):
 
         # ── 2. Скорости ────────────────────────────────────────────────
         if self._has_velocity_sensors:
-            velocities = StateDot(
-                x_dot=measured_state.x_dot,
-                theta1_dot=measured_state.theta1_dot,
-                theta2_dot=measured_state.theta2_dot,
+            velocities = State(
+                x=measured_state.x_dot,
+                theta1=measured_state.theta1_dot,
+                theta2=measured_state.theta2_dot,
             )
         else:
             velocities = self._differentiator.calculate_velocity(ms)
@@ -320,9 +319,9 @@ class Controller(ABC):
             x=ms.x,
             theta1=ms.theta1,
             theta2=ms.theta2,
-            x_dot=velocities.x_dot,
-            theta1_dot=velocities.theta1_dot,
-            theta2_dot=velocities.theta2_dot,
+            x_dot=velocities.x,
+            theta1_dot=velocities.theta1,
+            theta2_dot=velocities.theta2,
         )
         s_clean = self._signal_filter.filter_signal(full)
 
