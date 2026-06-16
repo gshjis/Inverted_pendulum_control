@@ -48,7 +48,7 @@ def main() -> None:
     pid = PIDController(controller_cfg)
     pid.set_motor_inertia(0.05)
 
-    plant_cfg = PlantConfig(dt=0.0005)
+    plant_cfg = PlantConfig(dt=0.005)
     sensor_cfg = SensorConfig()
     noise = NoiseForce(mean=0.0, std=0.0)
 
@@ -63,7 +63,7 @@ def main() -> None:
     t0 = time.perf_counter()
     profiler.enable()
     try:
-        for i in range(10_000):
+        for i in range(100_000):
             F_id = pid.compute_control(target, target)
             plant.update_physics(F_id, noise)
             sensor.get_telemetry(plant.q, plant.dq)

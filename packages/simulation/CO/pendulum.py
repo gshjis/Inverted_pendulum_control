@@ -259,49 +259,43 @@ class ObjectOfControl:
                 "C++ backend (co_cpp) is not available. Rebuild the pybind11 module or keep the Python fallback enabled."
             )
 
-        # Reuse objects instead of creating them every tick.
-        noise_cpp = self._cpp_noise
-        if noise_cpp is None:
-            raise RuntimeError("C++ backend objects are not initialized")
-        noise_cpp.mean = float(F_noise.mean)
-        noise_cpp.std = float(F_noise.std)
+        # Fast path: use update_physics_cpp if available.
+        if hasattr(_co_cpp, "update_physics_cpp"):
+            # Pass q/dq as writable contiguous float64 buffers.
+            q_arr = np.asarray(self._q, dtype=np.float64)
+            dq_arr = np.asarray(self._dq, dtype=np.float64)
+            if not q_arr.flags["WRITEABLE"]:
+                q_arr = q_arr.copy()
+            if not dq_arr.flags["WRITEABLE"]:
+                dq_arr = dq_arr.copy()
 
-        if self._backslash_mode:
-            backlash_alpha = self._backlash.alpha if self._backlash is not None else 0.0
-            backlash_m_mot = self._backlash._m_mot if self._backlash is not None else 1.0
-        else:
-            backlash_alpha = 0.0
-            backlash_m_mot = 1.0
+            backlash_alpha = (
+                float(self._backlash.alpha) if self._backslash_mode and self._backlash is not None else 0.0
+            )
+            backlash_m_mot = (
+                float(self._backlash._m_mot) if self._backslash_mode and self._backlash is not None else 1.0
+            )
 
-        params = self._cpp_params
-        q_cpp = self._cpp_q
-        dq_cpp = self._cpp_dq
+            params = self._cpp_params
+            _q_arr, _dq_arr, self._cpp_backlash_gap_pos = _co_cpp.update_physics_cpp(
+                q_arr,
+                dq_arr,
+                float(F_ideal),
+                float(F_noise.mean),
+                float(F_noise.std),
+                float(self._dt),
+                params,
+                bool(self._backslash_mode),
+                bool(self._single_mode),
+                backlash_alpha,
+                backlash_m_mot,
+                float(self._cpp_backlash_gap_pos),
+            )
 
-        q_cpp.x = self._q[0]
-        q_cpp.theta1 = self._q[1]
-        q_cpp.theta2 = self._q[2]
-
-        dq_cpp.x_dot = self._dq[0]
-        dq_cpp.theta1_dot = self._dq[1]
-        dq_cpp.theta2_dot = self._dq[2]
-
-        q_cpp, dq_cpp = _co_cpp.rk4_step(
-            q_cpp,
-            dq_cpp,
-            float(F_ideal),
-            noise_cpp,
-            float(self._dt),
-            params,
-            bool(self._backslash_mode),
-            bool(self._single_mode),
-            float(backlash_alpha),
-            float(backlash_m_mot),
-            self._cpp_backlash_gap_pos,
-        )
-
-        self._q = np.array([q_cpp.x, q_cpp.theta1, q_cpp.theta2])
-        self._dq = np.array([dq_cpp.x_dot, dq_cpp.theta1_dot, dq_cpp.theta2_dot])
-        return
+            # Keep python state as numpy float64 arrays
+            self._q = np.asarray(_q_arr, dtype=np.float64)
+            self._dq = np.asarray(_dq_arr, dtype=np.float64)
+            return
 
     def reset(self) -> None:
         """Сбросить состояние модели к начальному.

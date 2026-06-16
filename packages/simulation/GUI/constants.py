@@ -19,8 +19,8 @@ PEND_R = 6
 TRACK_Y = 550
 FORCE_SCALE = 3.0
 
-PHYSICS_DT = 0.0005
-SUBTICKS = int(PHYSICS_DT / 0.00005)
+PHYSICS_DT = 0.005
+SUBTICKS = int(PHYSICS_DT / 0.005)
 
 # --- Target marker defaults ---
 # Цвет маркера цели (по умолчанию серый) и при hover

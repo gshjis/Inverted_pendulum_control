@@ -1,5 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 
 #include "co_physics.hpp"
 
@@ -61,6 +62,87 @@ PYBIND11_MODULE(co_cpp, m) {
         py::arg("q"), py::arg("dq"), py::arg("F_ideal"), py::arg("noise"), py::arg("dt"),
         py::arg("params"), py::arg("backslash_mode"), py::arg("single_mode"),
         py::arg("backlash_alpha"), py::arg("backlash_m_mot"), py::arg("backlash_gap_pos"));
+
+    // update_physics_cpp: performance-oriented wrapper that updates q/dq in-place
+    // and returns updated backlash_gap_pos.
+    // Noise is treated as a constant on the step: F_total = F_real + noise_mean.
+    // (noise_std is provided for API parity but is not sampled here.)
+    m.def(
+        "update_physics_cpp",
+        [](py::array_t<double, py::array::c_style | py::array::forcecast> q_arr,
+           py::array_t<double, py::array::c_style | py::array::forcecast> dq_arr,
+           double F_ideal,
+           double noise_mean,
+           double /*noise_std*/,
+           double dt,
+           PlantParams params,
+           bool backslash_mode,
+           bool single_mode,
+           double backlash_alpha,
+           double backlash_m_mot,
+           double backlash_gap_pos) {
+            if (q_arr.size() != 3 || dq_arr.size() != 3) {
+                throw std::runtime_error("update_physics_cpp expects q/dq arrays of size 3");
+            }
+
+            // Ensure arrays are writable
+            if (!q_arr.mutable_data() || !dq_arr.mutable_data()) {
+                throw std::runtime_error("update_physics_cpp expects writable q/dq numpy arrays");
+            }
+
+            auto q_ptr = q_arr.mutable_data();
+            auto dq_ptr = dq_arr.mutable_data();
+
+            State3 q;
+            StateDot3 dq;
+            q.x = q_ptr[0];
+            q.theta1 = q_ptr[1];
+            q.theta2 = q_ptr[2];
+            dq.x_dot = dq_ptr[0];
+            dq.theta1_dot = dq_ptr[1];
+            dq.theta2_dot = dq_ptr[2];
+
+            // Backlash (exactly as in rk4_step wrapper)
+            double F_real = F_ideal;
+            double gap_pos = backlash_gap_pos;
+            if (backslash_mode) {
+                const double half_gap = backlash_alpha / 2.0;
+                const double a_rel = F_ideal / backlash_m_mot;
+                gap_pos += a_rel * dt;
+                if (gap_pos > half_gap) {
+                    gap_pos = half_gap;
+                    F_real = F_ideal;
+                } else if (gap_pos < -half_gap) {
+                    gap_pos = -half_gap;
+                    F_real = F_ideal;
+                } else {
+                    F_real = 0.0;
+                }
+            }
+
+            const double F_total = F_real + noise_mean;
+            rk4_step(q, dq, F_total, dt, params, single_mode);
+
+            // write back
+            q_ptr[0] = q.x;
+            q_ptr[1] = q.theta1;
+            q_ptr[2] = q.theta2;
+            dq_ptr[0] = dq.x_dot;
+            dq_ptr[1] = dq.theta1_dot;
+            dq_ptr[2] = dq.theta2_dot;
+
+            return py::make_tuple(q_arr, dq_arr, gap_pos);
+        },
+        py::arg("q"), py::arg("dq"), py::arg("F_ideal"),
+        py::arg("noise_mean"), py::arg("noise_std"), py::arg("dt"),
+        py::arg("params"), py::arg("backslash_mode"), py::arg("single_mode"),
+        py::arg("backlash_alpha"), py::arg("backlash_m_mot"),
+        py::arg("backlash_gap_pos"));
+
+    // NOTE:
+    // update_physics_cpp будет добавлен позже после уточнения формата доступа к numpy массивам
+    // (нужны includes pybind11/numpy и корректная работа с py::array_t).
+    // Сейчас оставляем только rk4_step, т.к. он уже обновляет q/dq и backlash_gap_pos.
 
     py::class_<State3>(m, "State3")
         .def(py::init<>())
