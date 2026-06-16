@@ -291,8 +291,14 @@ class Controller(ABC):
             )
 
         # ── 6. Насыщение (clipping)
-        F_clipped = float(np.clip(self._action_filtered, -self._max_force, self._max_force))
-
+        max_f = self._max_force
+        F = self._action_filtered
+        if F > max_f:
+            F_clipped = max_f
+        elif F < -max_f:
+            F_clipped = -max_f
+        else:
+            F_clipped = F
         # ── 7. Сглаживание итогового (обрезанного) сигнала перед выдачей (action_smooth)
         if self._action_smoothed is None:
             self._action_smoothed = F_clipped

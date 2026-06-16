@@ -1,11 +1,14 @@
 from packages.simulation.CO.datatypes import NoiseForce, PlantConfig
 import numpy as np
+
 # Optional C++ backend (pybind11). If unavailable (e.g. no built extension), fall back.
+# Используем абсолютный импорт, чтобы модуль корректно работал при прямом запуске
+# скриптов из репозитория (когда относительные импорты могут не резолвиться).
 try:
-    # The CMake build outputs co_cpp.so into packages/simulation/CO/.
     from packages.simulation.CO import co_cpp as _co_cpp  # type: ignore
 except Exception:  # pragma: no cover
     _co_cpp = None
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
