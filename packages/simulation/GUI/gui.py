@@ -72,7 +72,7 @@ class PendulumViewer:
         self._sensor = SensorBlock(sensor_config)
         self._noise = noise
         self._controller = controller
-        self._target = np.array([0.0, np.pi, 0])
+        self._target =target_state
         self._terminate_condition = terminate_condition
 
         self._motor_inertia = MotorInertia(time_constant=0.1) if controller is None else None
@@ -178,7 +178,7 @@ class PendulumViewer:
                     changed = True
 
                 if changed:
-                    self._target.x = float(self._marker_x)
+                    self._target[0] = float(self._marker_x)
                     self._last_marker_update_ms = pygame.time.get_ticks()
             # Сохранить сырые события для обработки маркера и других модалей
             self._last_events = actions.get("events", [])
@@ -284,6 +284,7 @@ class PendulumViewer:
             else:
                 F = 0.0
                 viz_force = 0.0
+                
 
             # ── Сброс ──────────────────────────────────────────────────
             if keys[pygame.K_SPACE]:

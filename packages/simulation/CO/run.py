@@ -1,7 +1,7 @@
-from .datatypes import NoiseForce
-from .pendulum import ObjectOfControl
-from .sensor import SensorBlock
-from .controller import Controller
+from packages.simulation.CO.datatypes import NoiseForce
+from packages.simulation.CO.pendulum import ObjectOfControl
+from packages.simulation.CO.sensor import SensorBlock
+from packages.simulation.CO.controller import Controller
 from typing import Callable
 import numpy as np
 

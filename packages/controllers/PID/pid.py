@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 import cost_functions as cost_f
+from loggers import Logger
 import numpy as np
 from numpy.typing import NDArray
 from packages.simulation.CO import (
@@ -16,7 +17,7 @@ from packages.simulation.CO import (
 )
 
 def terminate_condition(state:ObjectOfControl) -> bool:
-    if abs(state.q.x)>4 or abs(state.q.theta1 - np.pi) > np.radians(15):
+    if abs(state.q[1] - np.pi) > np.radians(40):
         return True
     return False
 
@@ -111,23 +112,23 @@ class PIDController(Controller):
         sensor_config: SensorConfig,
         noise: NoiseForce,
         optimizer,
-        logger:Optional[int],
         target_state: np.ndarray|Callable,
         terminate_condition: Callable[[ObjectOfControl], bool] | None = None,
         episode_max_time: float = 150.0,
+        logger:Optional[Logger] = None,
         *,
         method_options: dict[str, Any] | None = None,
     ) -> None:
         plant = ObjectOfControl(plant_config)
         sensor = SensorBlock(sensor_config)
-        optimizer.optimze(
-            method_options, 
-            logger, 
-            noise, 
+        a =optimizer.optimize(
+            self,
             plant,
             sensor, 
+            noise, 
             target_state, 
             terminate_condition, 
-            episode_max_time
+            episode_max_time,
+            logger
         )
-        
+        print(a)

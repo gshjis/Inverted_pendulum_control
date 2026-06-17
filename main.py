@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import numpy as np
+from optimizers import Zigler_Nikols, Genetic_PID_AngleOnly
+from loggers import Logger
 
 from packages.simulation.CO import (
     ControllerConfig,
@@ -40,7 +42,7 @@ PLANT_CONFIG = PlantConfig(
     b_2=0.00,
     single_pendulum_mode=True,   # двухзвенный режим
     backslash_mode=False,        # люфт выключен
-    init_q=np.array([0.0, 0, 0.0]),   # маятник вверху
+    init_q=np.array([0.0, np.pi, 0.0]),   # маятник вверху
     init_dq=np.array([0.0, 0.0, 0.0]),
     dt=0.005
 )
@@ -67,30 +69,45 @@ CONTROLLER_CONFIG = ControllerConfig(
     has_velocity_sensors=False,  
     differentiator_cutoff_hz=20.0, # фильтрация дифференциатора
     filter_cutoff_hz=10.0,         # фильтрация сигнала
-    gains=  [118.99, 0.23, 80.08, -5.00, -13.87]  # [Kp, Ki, Kd, Kx, Kdx]
+    gains=   [25.27, 20, 3.99, -1, -0.1] # [Kp, Ki, Kd, Kx, Kdx]
 )
 
 # Инициализация контроллера
 controller = PIDController(CONTROLLER_CONFIG)
-# Добавляем инерционность двигателя (tau = 0.05 с)
-controller.set_motor_inertia(time_constant=0.05)
+controller.set_motor_inertia(time_constant=0.1)
+method_options={
+    "early_stop_angle": 0.01,
+    "early_stop_x": 0.02,
+    "early_stop_steps": 50,
+    "K_p_range": [0.0, 70.0],
+    "K_d_range": [0.0, 10.0],
+    "K_x_range": [-15.0, -1.0],      # ← сузил, чтобы Kx не был слишком маленьким
+    "K_dx_range": [-15.0, 0.0],
+    "K_i_range": [0.0, 0.5],        # ← уменьшил интеграл
+    "population_size": 50,
+    "generations": 30,
+    "top_k": 6,
+    "final_error_weight": 1000.0,
+    "overshoot_weight": 100.0,      # ← меньше штрафа за перелёт
+    "integral_weight": 2.0,         # ← больше штрафа за ошибку
+    "settling_weight": 50.0,        # ← главный приоритет
+    "late_brake_weight": 10.0,
+}
 # controller.train(
 #     PLANT_CONFIG, 
 #     SENSOR_CONFIG, 
 #     NoiseForce(mean=0.05, std=0.01),
-#     target_state=MeasuredState(0, np.pi, 0),
+#     target_state=np.array([-3, np.pi, 0, 0,0,0]),
 #     terminate_condition=terminate_condition,
-#     max_time=40.0,
-#     method_options={
-#         "generations": 15,
-#         "population_size": 100,
-#         "mutation_sigma": 0.15,
-#         "mutation_prob": 0.4,
-#         "early_stop_threshold": 10.0,  # остановиться при J < 10
-#     }
+#     episode_max_time=1000.0,
+#     logger=Logger(),
+#     optimizer=Genetic_PID_AngleOnly(),
+#     method_options=method_options
 # )
+
 # Инициализация объекта управления
 plant = ObjectOfControl(PLANT_CONFIG)
+# 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Запуск симуляции
@@ -100,8 +117,8 @@ window = PendulumViewer(
     plant,
     SENSOR_CONFIG,
     NoiseForce(mean=0.05, std=0.02),
-    # controller=controller,
+    controller=controller,
     # terminate_condition=terminate_condition,
-    target_state=np.array([0, np.pi, 0]),
+    target_state=np.array([0, np.pi, 0, 0, 0, 0]),
 )
 window.use()

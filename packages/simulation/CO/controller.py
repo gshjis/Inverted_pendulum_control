@@ -277,7 +277,6 @@ class Controller(ABC):
         # ── 3. Фильтрация ──────────────────────────────────────────────
         full = np.concat([measured_state[:3], velocities])
         s_clean = self._signal_filter.filter_signal(full)
-
         # ── 4. Закон управления (абстрактный) ──────────────────────────
         F_raw = self.get_action(s_clean, target_state)
 
