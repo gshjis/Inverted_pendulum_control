@@ -15,12 +15,19 @@ from packages.simulation.CO import (
 )
 from typing import Callable, Optional, Any
 from loggers import Logger
+import copy
+
 
 def default_terminate_condition(state: ObjectOfControl) -> bool:
-    """Эпизод прерывается, если маятник отклонился более чем на 40° от вертикали."""
-    if abs(state.q[1] - np.pi) > np.radians(40):
-        return True
-    return False
+    """Падение если маятник отклонился от π более чем на 40°."""
+    angle = state.q[1]
+    # Берем угол по модулю 2π
+    angle = angle % (2 * np.pi)
+    # Проверяем отклонение от π
+    deviation = abs(angle - np.pi)
+    # Учитываем, что отклонение может быть через 0
+    deviation = min(deviation, 2*np.pi - deviation)
+    return deviation > np.radians(40) or abs(state.q[0]) > 3
 
 
 class ReinforceNet(nn.Module):
@@ -29,8 +36,8 @@ class ReinforceNet(nn.Module):
         state_dim: int,
         action_dim: int,
         hidden_layers: list[int],
-        activation: str,
-        output_activation: str,
+        activation: str = "tanh",
+        output_activation: str = "tanh",
     ) -> None:
         super().__init__()
         self.activation_name = activation
@@ -41,33 +48,32 @@ class ReinforceNet(nn.Module):
         for hidden_dim in hidden_layers:
             self.layers.append(nn.Linear(prev_dim, hidden_dim))
             prev_dim = hidden_dim
-        # action_dim — для среднего, ещё action_dim — для log_std
+        
         self.mu_layer = nn.Linear(prev_dim, action_dim)
         self.log_std_layer = nn.Linear(prev_dim, action_dim)
 
     def _get_activation(self, name: str) -> nn.Module:
-        if name == "relu":
-            return nn.ReLU()
-        elif name == "tanh":
-            return nn.Tanh()
-        elif name == "sigmoid":
-            return nn.Sigmoid()
-        elif name == "gelu":
-            return nn.GELU()
-        else:
+        activations = {
+            "relu": nn.ReLU(),
+            "tanh": nn.Tanh(),
+            "sigmoid": nn.Sigmoid(),
+            "gelu": nn.GELU(),
+        }
+        if name not in activations:
             raise ValueError(f"Unknown activation: {name}")
+        return activations[name]
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         for layer in self.layers:
-            x = layer(x)
-            x = self._get_activation(self.activation_name)(x)
+            x = self._get_activation(self.activation_name)(layer(x))
+        
         mu = self.mu_layer(x)
         if self.output_activation_name == "tanh":
             mu = torch.tanh(mu)
         elif self.output_activation_name == "sigmoid":
             mu = torch.sigmoid(mu)
-        log_std = self.log_std_layer(x)
-        log_std = torch.clamp(log_std, -20.0, 2.0)  # для стабильности
+        
+        log_std = torch.clamp(self.log_std_layer(x), -5.0, 2.0)
         return mu, log_std
 
 
@@ -78,45 +84,39 @@ class Reinforce(Controller):
         Controller.__init__(self, controller_config)
 
         self.name = "REINFORCE"
-        self.state_dim = config.state_dim
-        self.action_dim = config.action_dim
-        self.hidden_layers = config.hidden_layers
-        self.activation = config.activation
-        self.learning_rate = config.learning_rate
-        self.output_activation = config.output_activation
-
         self.net = ReinforceNet(
-            state_dim=self.state_dim,
-            action_dim=self.action_dim,
-            hidden_layers=self.hidden_layers,
-            activation=self.activation,
-            output_activation=self.output_activation,
+            state_dim=config.state_dim,
+            action_dim=config.action_dim,
+            hidden_layers=config.hidden_layers,
+            activation=config.activation,
+            output_activation=config.output_activation,
         )
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=config.learning_rate)
         self._log_probs: list[torch.Tensor] = []
+        self._max_force = controller_config.max_force
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return self.net(x)
 
     def get_action(self, s_clean: np.ndarray, target_state: np.ndarray) -> float:
-        x = torch.cat(
-            [
-                torch.from_numpy(s_clean).float(),
-                torch.from_numpy(target_state).float(),
-            ],
-            dim=0,
-        )
+        x = torch.cat([
+            torch.from_numpy(s_clean).float(),
+            torch.from_numpy(target_state).float(),
+        ], dim=0)
+        
         mu, log_std = self.forward(x)
         std = torch.exp(log_std)
         dist = torch.distributions.Normal(mu, std)
+        
         action = dist.sample()
         log_prob = dist.log_prob(action).sum(dim=-1)
         self._log_probs.append(log_prob)
-        return float(torch.tanh(action).item() * self._max_force)
+        
+        return float(action.item() * self._max_force)
 
     def reset(self) -> None:
         super().reset()
-        self._log_probs: list[torch.Tensor] = []
+        self._log_probs = []
 
     def train(
         self,
@@ -134,51 +134,64 @@ class Reinforce(Controller):
         sensor = SensorBlock(sensor_config)
         self.net.train()
         gamma = 0.99
+        dt_control = self._dt
+        max_steps = int(episode_max_time / dt_control)
 
         for episode in range(episodes):
-            plant = ObjectOfControl(plant_config.copy())
+            # Создаём свежий экземпляр маятника
+            plant = ObjectOfControl(copy.deepcopy(plant_config))
             self.reset()
 
-            dt_control = self._dt
-            max_steps = int(episode_max_time / dt_control)
-
             rewards: list[float] = []
-
             F_raw = 0.0
+
             for _ in range(max_steps):
                 J_, F_raw = clock_cycle(
                     self, plant, sensor, noise, F_raw, target_state,
-                    lambda t, m: -0.01 * abs(target_state[1] - m[1]).sum()
+                    lambda t, m: 0.0  # отключаем старую награду
                 )
-                rewards.append(float(J_))
+                
+                # Новая награда: +1 за выживание
+                rewards.append(1.0)
 
-                if terminate_condition is not None and terminate_condition(plant):
-                    rewards[-1] += -50.0
+                # Если маятник упал — завершаем эпизод
+                if default_terminate_condition(plant):
+                    rewards[-1] = -100.0  # Штраф за падение
                     break
-            
 
-            # ── REINFORCE: вычисление returns ──
+            # Вычисляем discounted returns
             G = 0.0
-            returns: list[float] = []
+            returns = []
             for r in reversed(rewards):
                 G = r + gamma * G
                 returns.insert(0, G)
 
+            # Нормализация returns
             returns_t = torch.tensor(returns, dtype=torch.float32)
             if len(returns_t) > 1:
-                returns_t = returns_t - returns_t.mean()
+                returns_t = (returns_t - returns_t.mean()) / (returns_t.std() + 1e-8)
 
-            # loss = -sum(log_prob * return)
+            # Вычисляем loss (максимизируем log_prob * ret)
             loss = torch.tensor(0.0, dtype=torch.float32)
             for log_prob, ret in zip(self._log_probs, returns_t):
-                loss = loss + log_prob * ret
+                loss = loss - log_prob * ret  # стандартный REINFORCE
+            loss = loss / max(1, len(self._log_probs))
 
+            # Оптимизация
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=1.0)
             self.optimizer.step()
 
-            print({"episode": episode, "return": sum(rewards), "loss": loss.item()})
+            # Логирование
+            total_return = sum(rewards)
+            if episode % 10 == 0:
+                print(f"Episode {episode:4d} | Return: {total_return:8.2f} | Loss: {loss.item():8.4f} | Steps: {len(rewards):3d}")
 
-            if episode % 100 == 0:
-                print(f"Episode {episode}, Return: {sum(rewards):.2f}, Loss: {loss.item():.4f}")
+            if logger is not None and episode % 100 == 0:
+                logger.log_metrics({
+                    "episode": episode,
+                    "return": total_return,
+                    "loss": loss.item(),
+                    "steps": len(rewards)
+                })

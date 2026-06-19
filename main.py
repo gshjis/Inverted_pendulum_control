@@ -38,7 +38,7 @@ PLANT_CONFIG = PlantConfig(
     backslash_mode=False,        # люфт выключен
     init_q=np.array([0.0, np.pi, 0.0]),   # маятник вверху
     init_dq=np.array([0.0, 0.0, 0.0]),
-    dt=0.001
+    dt=0.005
 )
 
 
@@ -60,12 +60,12 @@ NET_CONFIG = ReinforceNetworkConfig(
     action_dim=1,              # одно управляющее воздействие — сила F
     hidden_layers=[64,64],
     activation="relu",
-    learning_rate=1e-3,
+    learning_rate=1e-4,
     output_activation="tanh",
 )
 
 CONTROLLER_CONFIG = ControllerConfig(
-    dt=0.01,
+    dt=0.05,
     max_force=30.0,
     has_velocity_sensors=True,
     filter_cutoff_hz=50.0,
@@ -77,14 +77,14 @@ if __name__ == "__main__":
 
     NOISE = NoiseForce(mean=0.05, std=0.01)
     TARGET = np.array([0.0, np.pi, 0.0, 0.0, 0.0, 0.0])
-    agent.set_motor_inertia(time_constant=0.1)
+    agent.set_motor_inertia(time_constant=0.01)
     agent.train(
         plant_config=PLANT_CONFIG,
         sensor_config=SENSOR_CONFIG,
         noise=NOISE,
         target_state=TARGET,
         episode_max_time=30.0,
-        episodes=20,
+        episodes=20000,
     )
 
     # ── Визуализация обученного агента ─────────────────────────────────
