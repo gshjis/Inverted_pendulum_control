@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.typing import NDArray
 
-from .datatypes import (
+from packages.simulation.CO.datatypes import (
     ControllerConfig,
 )
 from packages.simulation.CO.engine import MotorInertia
@@ -319,7 +319,7 @@ class Controller(ABC):
     # ── Абстрактный метод (закон управления) ──────────────────────────────
 
     @abstractmethod
-    def get_action(self, s_clean: np.ndarray, target_state:np.ndarray) -> float:
+    def get_action(self, s_clean: np.ndarray, target_state:np.ndarray) -> float|np.ndarray:
         """
         Абстрактный метод вычисления управляющего воздействия.
 

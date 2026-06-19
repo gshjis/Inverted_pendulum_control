@@ -130,6 +130,31 @@ class PlantConfig:
             "dt": self.dt
         }
 
+    def copy(self) -> PlantConfig:
+        """Создать глубокую копию конфигурации."""
+        return PlantConfig(
+            M=self.M,
+            m1=self.m1,
+            m2=self.m2,
+            l1=self.l1,
+            l2=self.l2,
+            L1=self.L1,
+            L2=self.L2,
+            J1=self.J1,
+            J2=self.J2,
+            g=self.g,
+            b_c=self.b_c,
+            b_1=self.b_1,
+            b_2=self.b_2,
+            single_pendulum_mode=self.single_pendulum_mode,
+            backslash_mode=self.backslash_mode,
+            backlash_alpha=self.backlash_alpha,
+            backlash_m_mot=self.backlash_m_mot,
+            init_q=self.init_q.copy(),
+            init_dq=self.init_dq.copy(),
+            dt=self.dt,
+        )
+
 
 @dataclass
 class SensorConfig:

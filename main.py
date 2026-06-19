@@ -1,15 +1,11 @@
 """
-Основной скрипт симуляции перевёрнутого маятника с PID-регулятором.
-
-Содержит конфигурации маятника, датчиков, шумов и регулятора.
-Запускает pygame-визуализацию с управлением от PID.
+Основной скрипт симуляции перевёрнутого маятника с PID-регулятором
+и обучения RL-агента (REINFORCE).
 """
 
 from __future__ import annotations
 
 import numpy as np
-from optimizers import Zigler_Nikols, Genetic_PID_AngleOnly
-from loggers import Logger
 
 from packages.simulation.CO import (
     ControllerConfig,
@@ -18,13 +14,11 @@ from packages.simulation.CO import (
     PlantConfig,
     SensorConfig,
 )
-from packages.controllers.PID import PIDController, terminate_condition
 from packages.simulation.GUI import PendulumViewer
 
+from packages.controllers.REINFORCE.reinforce import Reinforce
+from packages.controllers.REINFORCE.mode_config import ReinforceNetworkConfig
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Конфигурация маятника (PlantConfig)
-# ═══════════════════════════════════════════════════════════════════════════
 
 PLANT_CONFIG = PlantConfig(
     M=1.0,          # масса тележки, кг
@@ -44,12 +38,9 @@ PLANT_CONFIG = PlantConfig(
     backslash_mode=False,        # люфт выключен
     init_q=np.array([0.0, np.pi, 0.0]),   # маятник вверху
     init_dq=np.array([0.0, 0.0, 0.0]),
-    dt=0.005
+    dt=0.001
 )
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Конфигурация датчиков и шумов (SensorConfig)
-# ═══════════════════════════════════════════════════════════════════════════
 
 SENSOR_CONFIG = SensorConfig(
     encoder_resolution_1=4096,     # 12 бит
@@ -59,38 +50,51 @@ SENSOR_CONFIG = SensorConfig(
     noise_std_dq=(0.01, 0.02, 0.02),     # СКО шума скоростей
 )
 
+
 # ═══════════════════════════════════════════════════════════════════════════
-# Конфигурация PID-регулятора (ControllerConfig)
+# REINFORCE — обучение
 # ═══════════════════════════════════════════════════════════════════════════
+
+NET_CONFIG = ReinforceNetworkConfig(
+    state_dim=12,              # s_clean (6) + target_state (6)
+    action_dim=1,              # одно управляющее воздействие — сила F
+    hidden_layers=[64,64],
+    activation="relu",
+    learning_rate=1e-3,
+    output_activation="tanh",
+)
 
 CONTROLLER_CONFIG = ControllerConfig(
-    dt=0.05,                    # такт УУ 200 Гц
-    max_force=10.0,              # макс. сила мотора, Н
-    has_velocity_sensors=False,  
-    differentiator_cutoff_hz=20.0, # фильтрация дифференциатора
-    filter_cutoff_hz=10.0,         # фильтрация сигнала
-    gains=   [28.63, 38.31, 5.26, -3, -8] # [Kp, Ki, Kd, Kx, Kdx]
+    dt=0.01,
+    max_force=30.0,
+    has_velocity_sensors=True,
+    filter_cutoff_hz=50.0,
 )
 
-# Инициализация контроллера
-controller = PIDController(CONTROLLER_CONFIG)
-controller.set_motor_inertia(time_constant=0.1)
 
+if __name__ == "__main__":
+    agent = Reinforce(NET_CONFIG, CONTROLLER_CONFIG)
 
-# Инициализация объекта управления
-plant = ObjectOfControl(PLANT_CONFIG)
-# 
+    NOISE = NoiseForce(mean=0.05, std=0.01)
+    TARGET = np.array([0.0, np.pi, 0.0, 0.0, 0.0, 0.0])
+    agent.set_motor_inertia(time_constant=0.1)
+    agent.train(
+        plant_config=PLANT_CONFIG,
+        sensor_config=SENSOR_CONFIG,
+        noise=NOISE,
+        target_state=TARGET,
+        episode_max_time=30.0,
+        episodes=20,
+    )
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Запуск симуляции
-# ═══════════════════════════════════════════════════════════════════════════
+    # ── Визуализация обученного агента ─────────────────────────────────
+    plant = ObjectOfControl(PLANT_CONFIG)
 
-window = PendulumViewer(
-    plant,
-    SENSOR_CONFIG,
-    NoiseForce(mean=0.05, std=0.02),
-    controller=controller,
-    # terminate_condition=terminate_condition,
-    target_state=np.array([0, np.pi, 0, 0, 0, 0]),
-)
-window.use()
+    window = PendulumViewer(
+        plant,
+        SENSOR_CONFIG,
+        NOISE,
+        controller=agent,
+        target_state=TARGET,
+    )
+    window.use()
