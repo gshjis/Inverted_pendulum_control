@@ -115,7 +115,7 @@ class Reinforce(Controller):
         log_prob = dist.log_prob(action).sum(dim=-1)
         self._log_probs.append(log_prob)
         
-        return float(action.item())*self._max_force
+        return mu*self._max_force
 
     def save(self, path: str | Path) -> None:
         """Сохранить веса нейросети в файл."""

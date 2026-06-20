@@ -14,6 +14,7 @@ from packages.simulation.CO import (
     PlantConfig,
     SensorConfig,
 )
+from packages.simulation.GUI import PendulumViewer
 
 from packages.controllers.REINFORCE.reinforce import Reinforce
 from packages.controllers.REINFORCE.mode_config import ReinforceNetworkConfig
@@ -77,17 +78,25 @@ if __name__ == "__main__":
     NOISE = NoiseForce(mean=0.05, std=0.1)
     TARGET = np.array([0.0, np.pi, 0.0, 0.0, 0.0, 0.0])
     agent.set_motor_inertia(time_constant=0.1)
-    agent.train(
-        plant_config=PLANT_CONFIG,
+    # agent.train(
+    #     plant_config=PLANT_CONFIG,
+    #     sensor_config=SENSOR_CONFIG,
+    #     noise=NOISE,
+    #     target_state=TARGET,
+    #     episode_max_time=30.0,
+    # )
+    agent = Reinforce.from_pretrained(
+        path="/home/gshjis/Python_projects/RL/checkpoints/reinforce/epoch_0420_return_+100.8_steps_588.pt",
+        config=NET_CONFIG,
+        controller_config=CONTROLLER_CONFIG,
+    )
+    w = PendulumViewer(
+        plant=ObjectOfControl(PLANT_CONFIG),
         sensor_config=SENSOR_CONFIG,
         noise=NOISE,
         target_state=TARGET,
-        episode_max_time=30.0,
+        controller=agent,
     )
-    # agent = Reinforce.from_pretrained(
-    #     path="/home/gshjis/Python_projects/RL/checkpoints/reinforce/episode_04000.pt",
-    #     config=NET_CONFIG,
-    #     controller_config=CONTROLLER_CONFIG,
-    # )
+    w.use()
 
 
