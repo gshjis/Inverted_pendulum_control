@@ -289,8 +289,6 @@ class ControllerConfig:
         Частота среза ФНЧ дифференциатора (``None`` — без фильтрации).
     filter_cutoff_hz : float
         Частота среза ФНЧ сигнала (Гц).
-    gains : list[float]
-        Начальные коэффициенты ``[Kp, Ki, Kd, Kx, Kdx]`` (для PID).
 
     Notes
     -----
@@ -298,9 +296,8 @@ class ControllerConfig:
     ``action_smoothing_cutoff_hz`` удалены как избыточные
     (см. ``compute_control`` в ``controller.py``).
 
-    Optimization potential:
-        - ``gains`` специфичен для PID; для универсальной конфигурации
-          имеет смысл вынести в отдельный ``PIDConfig``.
+    Поле ``gains`` удалено — теперь коэффициенты PID передаются
+    напрямую в конструктор ``PIDController`` как ``np.ndarray``.
     """
 
     dt: float = 0.005
@@ -308,7 +305,6 @@ class ControllerConfig:
     has_velocity_sensors: bool = False
     differentiator_cutoff_hz: float | None = None
     filter_cutoff_hz: float = 50.0
-    gains: list[float] = field(default_factory=lambda: [10.0, 1.0, 2.0, 1.0])
 
     def to_dict(self) -> dict:
         """
@@ -325,5 +321,4 @@ class ControllerConfig:
             "has_velocity_sensors": self.has_velocity_sensors,
             "differentiator_cutoff_hz": self.differentiator_cutoff_hz,
             "filter_cutoff_hz": self.filter_cutoff_hz,
-            "gains": self.gains,
         }

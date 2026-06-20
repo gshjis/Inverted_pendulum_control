@@ -24,12 +24,12 @@ def terminate_condition(state:ObjectOfControl) -> bool:
 
 
 class PIDController(Controller):
-    def __init__(self, config: ControllerConfig) -> None:
+    def __init__(self, config: ControllerConfig, gains: np.ndarray | None = None) -> None:
         super().__init__(config)
         self.name = "PID"
 
-        if isinstance(config, ControllerConfig):
-            gains = config.gains
+        if gains is None:
+            gains = np.array([10.0, 1.0, 2.0, 1.0, 2.0], dtype=np.float64)
         self._Kp: float = float(gains[0])
         self._Ki: float = float(gains[1])
         self._Kd: float = float(gains[2])
