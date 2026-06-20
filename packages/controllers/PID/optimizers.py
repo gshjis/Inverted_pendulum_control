@@ -19,7 +19,38 @@ from packages.simulation.CO.sensor import SensorBlock
 # ═══════════════════════════════════════════════════════════════════════════
 
 class Zigler_Nikols:
-    def __init__(self, logger: Optional[Logger] = None):
+    """
+    Оптимизатор коэффициентов положения (Kx, Kdx) методом Циглера-Николса.
+
+    Находит критический коэффициент :math:`Kx_{crit}` и период колебаний
+    :math:`T_{crit}` для системы с пропорциональным регулятором положения,
+    затем вычисляет финальные коэффициенты по формулам:
+
+    .. math::
+
+        Kx_{final} = 0.6 \\cdot Kx_{crit}
+        Kdx_{final} = 0.125 \\cdot Kx_{crit} \\cdot T_{crit}
+
+    Parameters
+    ----------
+    logger : Logger | None
+        Опциональный логгер для визуализации переходных процессов.
+
+    Notes
+    -----
+    Оптимизируются только Kx (пропорциональный по положению) и Kdx
+    (дифференциальный по скорости тележки). Угловые коэффициенты
+    (Kp, Ki, Kd) фиксируются и передаются через ``kwargs``.
+
+    Optimization potential:
+        - Детекция колебаний через ``scipy.signal.find_peaks`` —
+          узкое место при большом числе итераций. Можно заменить
+          на пороговый детектор zero-crossing.
+        - ``trajectory = np.zeros(max_steps)`` выделяет память
+          на каждом шаге перебора Kx; можно переиспользовать буфер.
+    """
+
+    def __init__(self, logger: Optional[Logger] = None) -> None:
         self.logger = logger
 
     def optimize(
@@ -33,15 +64,51 @@ class Zigler_Nikols:
         episode_max_time: float,
         logger: Optional[Logger] = None,
         **kwargs,
-    ):
+    ) -> dict[str, float]:
+        """
+        Запустить оптимизацию Kx/Kdx.
+
+        Parameters
+        ----------
+        controller : PIDController
+            ПИД-регулятор, коэффициенты которого оптимизируются.
+        plant : ObjectOfControl
+            Физическая модель.
+        sensor : SensorBlock
+            Блок датчиков.
+        noise : NoiseForce
+            Внешнее возмущение.
+        target_state : np.ndarray
+            Целевое состояние.
+        terminate_condition : Callable
+            Условие досрочного завершения.
+        episode_max_time : float
+            Максимальная длительность эпизода (с).
+        logger : Logger | None
+            Опциональный логгер.
+        **kwargs
+            ``fixed_Kp``, ``fixed_Ki``, ``fixed_Kd`` — фиксированные
+            угловые коэффициенты.
+            ``Kx_range`` — диапазон ``[min, max]`` перебора Kx.
+            ``Kx_step`` — шаг перебора Kx.
+
+        Returns
+        -------
+        dict[str, float]
+            Словарь с ключами ``Kx_crit``, ``T_crit``,
+            ``Kx_final``, ``Kdx_final``.
+
+        Raises
+        ------
+        RuntimeError
+            Если критический коэффициент не найден во всём диапазоне.
+        """
         logger = logger or self.logger
 
-        # Фиксируем угловые коэффициенты (уже настроены GA)
         fixed_Kp = float(kwargs.get("fixed_Kp", controller.gains[0]))
         fixed_Ki = float(kwargs.get("fixed_Ki", 0.0))
         fixed_Kd = float(kwargs.get("fixed_Kd", controller.gains[2]))
 
-        # Диапазон для Kx
         Kx_range = kwargs.get("Kx_range", [-40.0, -1.0])
         Kx_step = kwargs.get("Kx_step", -0.5)
         Kx_min, Kx_max = float(Kx_range[0]), float(Kx_range[1])
@@ -92,7 +159,6 @@ class Zigler_Nikols:
         if Kx_crit is None:
             raise RuntimeError("Kx_crit не найден")
 
-        # Формулы Циглера-Николса для ПД
         Kx_final = 0.6 * Kx_crit
         Kdx_final = 0.125 * Kx_crit * T_crit
 
@@ -108,6 +174,27 @@ class Zigler_Nikols:
         }
 
     def _detect_oscillations(self, trajectory: np.ndarray, dt: float) -> tuple[bool, float]:
+        """
+        Детектировать установившиеся колебания в траектории.
+
+        Использует ``scipy.signal.find_peaks`` для поиска пиков,
+        затем сравнивает среднюю амплитуду первой и второй половины
+        пиков. Если амплитуда стабильна (отклонение < 5%) — колебания
+        считаются установившимися.
+
+        Parameters
+        ----------
+        trajectory : np.ndarray
+            Временной ряд координаты (например, положения тележки).
+        dt : float
+            Шаг дискретизации (с).
+
+        Returns
+        -------
+        tuple[bool, float]
+            ``(True, период_в_с)`` если колебания обнаружены,
+            иначе ``(False, 0.0)``.
+        """
         from scipy.signal import find_peaks
 
         if len(trajectory) < 100:
@@ -143,6 +230,28 @@ class Zigler_Nikols:
 
 @dataclass
 class _GA2Config:
+    """
+    Внутренняя конфигурация генетического алгоритма.
+
+    Attributes
+    ----------
+    population_size : int
+        Размер популяции.
+    generations : int
+        Количество поколений.
+    elite_frac : float
+        Доля элитных особей, переходящих в следующее поколение.
+    tournament_k : int
+        Размер турнира для отбора.
+    mutation_sigma : float
+        СКО мутации (затухает к концу поколений).
+    mutation_prob : float
+        Вероятность мутации.
+    crossover_prob : float
+        Вероятность кроссовера (вещественная рекомбинация).
+    seed : int | None
+        Seed для воспроизводимости.
+    """
     population_size: int = 24
     generations: int = 40
     elite_frac: float = 0.2
@@ -154,7 +263,31 @@ class _GA2Config:
 
 
 class Genetic_PID_AngleOnly:
-    def __init__(self, logger: Optional[Logger] = None):
+    """
+    Оптимизация угловых коэффициентов PID (Kp, Ki, Kd) генетическим алгоритмом.
+
+    Оптимизирует только Kp, Ki, Kd для удержания маятника в вертикальном
+    положении. Коэффициенты положения (Kx, Kdx) фиксируются и передаются
+    через ``kwargs``.
+
+    Parameters
+    ----------
+    logger : Logger | None
+        Опциональный логгер.
+
+    Notes
+    -----
+    Фитнес-функция: минимизация отклонения угла.
+
+    Optimization potential:
+        - ``clock_cycle`` вызывается на каждый ген на каждом поколении —
+          основной потребитель CPU. Параллельная оценка популяции
+          (``multiprocessing``) может ускорить сходимость.
+        - ``_set_gains`` создаёт новый массив на каждый вызов;
+          можно присваивать атрибуты напрямую.
+    """
+
+    def __init__(self, logger: Optional[Logger] = None) -> None:
         self._logger = logger
 
     def optimize(
@@ -163,12 +296,47 @@ class Genetic_PID_AngleOnly:
         plant: ObjectOfControl,
         sensor: SensorBlock,
         noise: NoiseForce,
-        target_state: np.ndarray|Callable,
+        target_state: np.ndarray | Callable,
         terminate_condition: Callable[[ObjectOfControl], bool],
         episode_max_time: float,
         logger: Optional[Logger] = None,
         **kwargs,
-    ):
+    ) -> dict[str, float]:
+        """
+        Запустить генетическую оптимизацию Kp, Ki, Kd.
+
+        Parameters
+        ----------
+        controller : PIDController
+            ПИД-регулятор, коэффициенты которого оптимизируются.
+        plant : ObjectOfControl
+            Физическая модель.
+        sensor : SensorBlock
+            Блок датчиков.
+        noise : NoiseForce
+            Внешнее возмущение.
+        target_state : np.ndarray | Callable
+            Целевое состояние или функция.
+        terminate_condition : Callable
+            Условие досрочного завершения.
+        episode_max_time : float
+            Максимальная длительность эпизода (с).
+        logger : Logger | None
+            Опциональный логгер.
+        **kwargs
+            ``fixed_Kx``, ``fixed_Kdx`` — фиксированные коэффициенты
+            положения.
+
+            ``Kp_range``, ``Ki_range``, ``Kd_range`` — диапазоны
+            поиска ``[min, max]``.
+
+            ``population_size``, ``generations`` — параметры GA.
+
+        Returns
+        -------
+        dict[str, float]
+            Словарь с ключами ``best_Kp``, ``best_Ki``, ``best_Kd``.
+        """
         logger = logger or self._logger
 
         fixed_Kx = float(kwargs.get("fixed_Kx", 0.0))
