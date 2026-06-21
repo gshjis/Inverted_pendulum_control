@@ -7,16 +7,12 @@ import numpy as np
 
 import packages.controllers.PID.cost_functions as cf
 from loggers import Logger
-from packages.controllers.PID.pid import PIDController
+from packages.controllers.PID.pid import PIDController, terminate_condition
 from packages.simulation.CO.datatypes import NoiseForce
 from packages.simulation.CO.pendulum import ObjectOfControl
 from packages.simulation.CO.run import clock_cycle
 from packages.simulation.CO.sensor import SensorBlock
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  ЦИГЛЕР-НИКОЛС ДЛЯ ПОЛОЖЕНИЯ (Kx, Kdx)
-# ═══════════════════════════════════════════════════════════════════════════
 
 class Zigler_Nikols:
     """
@@ -60,7 +56,7 @@ class Zigler_Nikols:
         sensor: SensorBlock,
         noise: NoiseForce,
         target_state: np.ndarray,
-        terminate_condition: Callable[[ObjectOfControl], bool],
+        terminate_condition: Callable[[ObjectOfControl], bool] | None,
         episode_max_time: float,
         logger: Optional[Logger] = None,
         **kwargs,
@@ -138,8 +134,8 @@ class Zigler_Nikols:
 
             for step in range(max_steps):
                 _, F = clock_cycle(controller, plant, sensor, noise, F, target_state, cf.J)
-                if terminate_condition(plant):
-                    break
+                # if terminate_condition(plant):
+                #     break
                 trajectory[step] = plant.q[0]
                 steps_done = step + 1
 
@@ -379,7 +375,7 @@ class Genetic_PID_AngleOnly:
 
             for step in range(max_steps):
                 _, F = clock_cycle(controller, plant, sensor, noise, F, target_state, cf.J)
-                if terminate_condition(plant):
+                if terminate_condition and terminate_condition(plant):
                     return 1e6 + float(step)
 
                 if abs(plant.q[1] - angle_goal) < early_stop_angle:

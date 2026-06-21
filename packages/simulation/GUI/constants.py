@@ -10,7 +10,7 @@ GRAY = (100, 100, 100)
 ORANGE = (255, 180, 30)
 
 WIDTH, HEIGHT = 1200, 700
-FPS = 60
+FPS = 200
 SCALE = 100.0
 CART_W = 60
 CART_H = 30
@@ -38,4 +38,4 @@ MARKER_MAX_X = None
 MARKER_W = 12
 MARKER_H = 28
 # Сила при ручном управлении (перенесено из gui.py)
-FORCE_PER_FRAME = 20.0
+FORCE_PER_FRAME = 40.0

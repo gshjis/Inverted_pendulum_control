@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.typing import NDArray
 
-from .datatypes import (
+from packages.simulation.CO.datatypes import (
     ControllerConfig,
 )
 from packages.simulation.CO.engine import MotorInertia
@@ -343,6 +343,7 @@ class Controller(ABC):
         >>> force = ctrl.compute_control(meas, target)  # doctest: +SKIP
         """
 
+
         # ── 1. Скорости ────────────────────────────────────────────────
         if self._has_velocity_sensors:
             velocities = measured_state[3:]
@@ -357,7 +358,6 @@ class Controller(ABC):
 
         # ── 3. Закон управления (абстрактный) ──────────────────────────
         F_raw = self.get_action(s_clean, target_state)
-
         # ── 4. Насыщение (clipping) ────────────────────────────────────
         max_f = self._max_force
         if F_raw > max_f:

@@ -19,8 +19,9 @@ from packages.simulation.CO import (
     SensorBlock,
     SensorConfig,
 )
+from packages.simulation.CO.run import clock_cycle
 from .constants import *
-from .dialogs import ask_recording, ask_save_video, ask_input_target
+from .dialogs import ask_recording, ask_save_video
 from .recorder import compile_video
 from .draw import draw_cart, draw_pendulums, draw_force_arrow, draw_hud, draw_target_marker, draw_controller_button
 from .event_controller import EventController
@@ -33,6 +34,12 @@ from .event_controller import EventController
 class PendulumViewer:
     """
     Pygame-визуализация перевёрнутого маятника на тележке.
+
+    Использует ``clock_cycle`` из ``run.py`` для корректного тактирования
+    управления с имитацией вычислительной задержки.
+    Отрисовка — 60 FPS. Симуляция идёт в реальном времени:
+    количество вызовов ``clock_cycle`` за кадр определяется накопленным
+    временем относительно ``controller._dt``.
     """
 
     def __init__(
@@ -53,9 +60,13 @@ class PendulumViewer:
         self._target = target_state
         self._terminate_condition = terminate_condition
 
-        self._motor_inertia = MotorInertia(time_constant=0.1) if controller is None else None
+        # Инерционность двигателя: используется при ручном управлении,
+        # а при автоматическом — обрабатывается внутри compute_control / clock_cycle.
+        # Захардкожена 0.1с, т.к. это значение по умолчанию для set_motor_inertia.
+        self._motor_inertia = MotorInertia(time_constant=0.1)
         self._terminated = False
         self._elapsed_when_terminated: int | None = None
+        self._F: float = 0.0  # Текущая сила, применяемая к маятнику
 
         # Pygame
         pygame.init()
@@ -96,6 +107,16 @@ class PendulumViewer:
         self._controller_enabled = True if self._controller is not None else False
         self._controller_backup = None
 
+        # Аккумулятор симуляционного времени (сек).
+        # На каждом кадре добавляем реально прошедшее время dt_sec,
+        # и вызываем clock_cycle, пока накопление >= controller._dt.
+        self._sim_accumulator: float = 0.0
+
+        # Функция стоимости для clock_cycle (квадрат ошибки)
+        self._cost_fn: Callable[[np.ndarray, np.ndarray], float] = (
+            lambda t, m: float(np.dot(t - m, t - m))
+        )
+
     # ── Публичный метод ───────────────────────────────────────────────────
 
     def use(self) -> None:
@@ -114,28 +135,14 @@ class PendulumViewer:
         force_per_frame = FORCE_PER_FRAME
 
         self._start_ticks = pygame.time.get_ticks()
-
-        # Частота управления
-        control_interval_ms = (
-            int(self._controller._dt * 1000.0)
-            if self._controller is not None
-            else int(1.0 / FPS * 1000.0)
-        )
-        control_acc_ms = 0
-
-        # Сила, применяемая к маятнику (обновляется в такте управления)
-        F = 0.0
-
         prev_ticks = pygame.time.get_ticks()
         last_save_acc_ms = 0
-
-        # Сколько шагов физики за кадр
-        steps_per_frame = max(1, int(round((1.0 / FPS) / PHYSICS_DT)))
 
         while running:
             now = pygame.time.get_ticks()
             dt_ms = now - prev_ticks
             prev_ticks = now
+            dt_sec = dt_ms / 1000.0
 
             # ── 1. ОБРАБОТКА СОБЫТИЙ ──────────────────────────────────
             actions = self._event_controller.poll()
@@ -190,17 +197,27 @@ class PendulumViewer:
             if keys[pygame.K_ESCAPE] or keys[pygame.K_q]:
                 running = False
 
-            # ── 2. ОБНОВЛЕНИЕ УПРАВЛЕНИЯ (раз в control_interval_ms) ──
-            control_acc_ms += dt_ms
-
-            if not self._terminated and control_acc_ms >= control_interval_ms:
-                control_acc_ms = control_acc_ms % control_interval_ms
-
+            # ── 2. СИМУЛЯЦИЯ ───────────────────────────────────────────
+            if not self._terminated:
                 if self._controller is not None:
-                    measured = self._sensor.get_telemetry(self._plant.q, self._plant.dq)
-                    F = self._controller.compute_control(measured, self._target)
+                    # Режим автоматического управления: используем clock_cycle
+                    # с фиксированным шагом controller._dt.
+                    self._sim_accumulator += dt_sec
+                    dt_ctrl = self._controller._dt
+                    while self._sim_accumulator >= dt_ctrl:
+                        _, self._F = clock_cycle(
+                            self._controller,
+                            self._plant,
+                            self._sensor,
+                            self._noise,
+                            self._F,
+                            self._target,
+                            self._cost_fn,
+                        )
+                        self._sim_accumulator -= dt_ctrl
                 else:
-                    # Ручное управление
+                    # Ручное управление: физика шагает напрямую.
+                    steps = max(1, int(dt_sec / self._plant._dt))
                     if keys[pygame.K_LEFT] and not keys[pygame.K_RIGHT]:
                         manual_force = -force_per_frame
                     elif keys[pygame.K_RIGHT] and not keys[pygame.K_LEFT]:
@@ -208,29 +225,26 @@ class PendulumViewer:
                     else:
                         manual_force = 0.0
                     if self._motor_inertia:
-                        F = self._motor_inertia.update(manual_force, control_interval_ms / 1000.0)
+                        self._F = self._motor_inertia.update(manual_force, dt_sec)
                     else:
-                        F = manual_force
-
-            # ── 3. ФИЗИКА (каждый кадр) ──
-            if not self._terminated:
-                for _ in range(steps_per_frame):
-                    self._plant.update_physics(F, self._noise)
+                        self._F = manual_force
+                    for _ in range(steps):
+                        self._plant.update_physics(self._F, self._noise)
 
                 # Проверка терминального состояния
                 if self._terminate_condition is not None and self._terminate_condition(self._plant):
                     self._terminated = True
                     self._elapsed_when_terminated = pygame.time.get_ticks() - self._start_ticks
 
-            # ── 4. СБРОС ──────────────────────────────────────────────
+            # ── 3. СБРОС ──────────────────────────────────────────────
             if keys[pygame.K_SPACE]:
                 self._reset()
 
-            # ── 5. ОТРИСОВКА ────────────────────────────────────────────
-            self._draw(F)
+            # ── 4. ОТРИСОВКА ────────────────────────────────────────────
+            self._draw(self._F)
             self._handle_marker_events()
 
-            # ── 6. ЗАПИСЬ ВИДЕО ──────────────────────────────────────
+            # ── 5. ЗАПИСЬ ВИДЕО ──────────────────────────────────────
             if self._recording:
                 last_save_acc_ms += dt_ms
                 last_save_acc_ms = self._save_frame_if_recording(last_save_acc_ms)
@@ -287,6 +301,9 @@ class PendulumViewer:
                     self._controller.reset()
                 except Exception:
                     pass
+        # Сбросить аккумулятор и силу при переключении
+        self._sim_accumulator = 0.0
+        self._F = 0.0
 
     def _toggle_recording(self) -> None:
         """Включить/выключить запись кадров."""
@@ -312,21 +329,15 @@ class PendulumViewer:
 
     def _save_frame_if_recording(self, last_save_acc_ms: int) -> int:
         """Сохранить кадр если накоплено достаточно времени."""
-        try:
-            sim_interval_ms = (
-                int(self._controller._dt * 1000.0)
-                if self._controller is not None
-                else int(1.0 / FPS * 1000.0)
-            )
-        except Exception:
-            sim_interval_ms = int(1.0 / FPS * 1000.0)
+        # Интервал сохранения — 1/FPS, т.е. каждый кадр (60 FPS).
+        frame_interval_ms = int(1000.0 / FPS)
 
         if (
-            last_save_acc_ms >= sim_interval_ms
+            last_save_acc_ms >= frame_interval_ms
             and self._recording
             and self._record_dir is not None
         ):
-            last_save_acc_ms = last_save_acc_ms % sim_interval_ms
+            last_save_acc_ms = last_save_acc_ms % frame_interval_ms
             fname = f"frame_{self._frame_index:06d}.png"
             path = os.path.join(self._record_dir, fname)
             try:
@@ -365,15 +376,8 @@ class PendulumViewer:
         except Exception:
             pass
 
-        try:
-            sim_interval_ms = (
-                int(self._controller._dt * 1000.0)
-                if self._controller is not None
-                else int(1.0 / FPS * 1000.0)
-            )
-            return max(1, round(1000.0 / sim_interval_ms))
-        except Exception:
-            return 30
+        # Fallback: 60 FPS
+        return FPS
 
     def _reset(self) -> None:
         """Сброс состояния симуляции."""
@@ -386,6 +390,8 @@ class PendulumViewer:
         self._terminated = False
         self._start_ticks = pygame.time.get_ticks()
         self._elapsed_when_terminated = None
+        self._sim_accumulator = 0.0
+        self._F = 0.0
 
     def _handle_marker_events(self) -> None:
         """Обработка перетаскивания маркера цели."""
@@ -430,15 +436,6 @@ class PendulumViewer:
                     self._marker_x += dx
                     self._last_marker_update_ms = now_ms
                     self._target[0] = float(self._marker_x)
-
-    def _throttled_send_target(self) -> None:
-        """Отправляет обновление target_state.x в контроллер."""
-        now_ms = pygame.time.get_ticks()
-        if now_ms - getattr(self, '_last_marker_update_ms', 0) >= self._marker_throttle_ms:
-            try:
-                self._target[0] = float(self._marker_x)
-            finally:
-                self._last_marker_update_ms = now_ms
 
     # ── Отрисовка ─────────────────────────────────────────────────────────
 

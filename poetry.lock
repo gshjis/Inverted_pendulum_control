@@ -709,6 +709,19 @@ cffi = {version = ">=2.0.0", markers = "platform_python_implementation != \"PyPy
 ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
+name = "custom"
+version = "0.1.0"
+description = ""
+optional = false
+python-versions = "^3.12"
+files = []
+develop = true
+
+[package.source]
+type = "directory"
+url = "packages/controllers/custom"
+
+[[package]]
 name = "cycler"
 version = "0.12.1"
 description = "Composable style cycles"
@@ -3907,4 +3920,4 @@ type = ["pytest-mypy (>=1.0.1)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "b80e486cf353f7d650a879169b9425a3a1f8989f98ebb4ea59d46f8d2ae4aedf"
+content-hash = "357b608a46561ca27d66bf355e90a4698544fdb93f3a706bd84d2630e99e2bc5"

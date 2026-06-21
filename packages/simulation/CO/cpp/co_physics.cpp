@@ -128,4 +128,12 @@ void rk4_step(State3& q, StateDot3& dq, double F_total, double dt,
     q.x      += (dt / 6.0) * (dq.x_dot + 2.0 * dq2.x_dot + 2.0 * dq3.x_dot + dq4.x_dot);
     q.theta1 += (dt / 6.0) * (dq.theta1_dot + 2.0 * dq2.theta1_dot + 2.0 * dq3.theta1_dot + dq4.theta1_dot);
     q.theta2 += (dt / 6.0) * (dq.theta2_dot + 2.0 * dq2.theta2_dot + 2.0 * dq3.theta2_dot + dq4.theta2_dot);
+
+    // Normalize pendulum angles to [0, 2π) to prevent floating-point drift
+    // and ensure consistent error computation in the controller.
+    constexpr double TWO_PI = 2.0 * M_PI;
+    q.theta1 = std::fmod(q.theta1, TWO_PI);
+    if (q.theta1 < 0.0) q.theta1 += TWO_PI;
+    q.theta2 = std::fmod(q.theta2, TWO_PI);
+    if (q.theta2 < 0.0) q.theta2 += TWO_PI;
 }
