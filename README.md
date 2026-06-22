@@ -63,9 +63,6 @@ poetry install
 
 Сборка C++ ядра симуляции через pybind11.
 
-**Требования:** cmake ≥ 3.20, C++17 компилятор, pybind11 — уже включён
-в корневой `pyproject.toml`.
-
 #### Linux
 
 ```bash
@@ -93,21 +90,7 @@ print('C++ backend OK:', m)
 print('Functions:', [f for f in dir(m) if not f.startswith('_')])
 "
 ```
-
-**Быстрая пересборка** (без очистки `build`):
-```bash
-cd packages/simulation/CO/cpp/build
-cmake --build . -j "$(nproc)"
-```
-
 #### Windows
-
-**Требования:** Visual Studio Build Tools 2022 (или Visual Studio 2022
-с компонентом "Desktop development with C++"), cmake (установленный
-через `winget install cmake` или `choco install cmake`).
-
-Сборка в **PowerShell** (от имени разработчика — "Developer PowerShell for VS 2022"):
-
 ```powershell
 # 1. Подготовить build-директорию
 cd packages/simulation/CO/cpp
@@ -133,14 +116,6 @@ cmake --build . --config Release
 ```powershell
 poetry run python -c "from packages.simulation.CO import co_cpp as m; print('C++ backend OK:', m); print('Functions:', [f for f in dir(m) if not f.startswith('_')])"
 ```
-
-**Быстрая пересборка:**
-```powershell
-cd packages/simulation/CO/cpp/build
-cmake --build . --config Release
-```
-
----
 
 ## Быстрый старт
 
