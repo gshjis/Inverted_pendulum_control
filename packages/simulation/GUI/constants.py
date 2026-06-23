@@ -38,4 +38,4 @@ MARKER_MAX_X = None
 MARKER_W = 12
 MARKER_H = 28
 # Сила при ручном управлении (перенесено из gui.py)
-FORCE_PER_FRAME = 40.0
+FORCE_PER_FRAME = 8.0

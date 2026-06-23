@@ -28,14 +28,14 @@ PLANT_CONFIG = PlantConfig(
     M=1.0,
 
     # === Нижнее звено ===
-    m1=0.5,
+    m1=0.1,
     l1=0.3,
-    b_1=0.03,
+    b_1=0.003,
 
     # === Верхнее звено ===
-    m2=0.5,
+    m2=0.1,
     l2=0.3,
-    b_2=0.03,
+    b_2=0.003,
 
     # === Общие ===
     g=-9.81,
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         swingup_controller=swing_controller,
         balance_controller=pid_controller,
     )
-    controller.set_motor_inertia(time_constant=0.1)
+    controller.set_motor_inertia(time_constant=0.001)
 
     # Внешнее возмущение и целевое состояние
     NOISE = NoiseForce(mean=0.00, std=0.03)

@@ -63,7 +63,7 @@ class PendulumViewer:
         # Инерционность двигателя: используется при ручном управлении,
         # а при автоматическом — обрабатывается внутри compute_control / clock_cycle.
         # Захардкожена 0.1с, т.к. это значение по умолчанию для set_motor_inertia.
-        self._motor_inertia = MotorInertia(time_constant=0.1)
+        self._motor_inertia = MotorInertia(time_constant=0.01)
         self._terminated = False
         self._elapsed_when_terminated: int | None = None
         self._F: float = 0.0  # Текущая сила, применяемая к маятнику
