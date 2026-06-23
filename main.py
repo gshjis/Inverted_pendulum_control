@@ -1,15 +1,15 @@
 """
-Основной скрипт симуляции перевёрнутого маятника с PID-регулятором.
+Основной скрипт симуляции перевёрнутого маятника.
+Запускает Pygame-визуализацию с PID-регулятором и SwingUp-раскачкой.
 """
 
 from __future__ import annotations
 
 import numpy as np
-from pid import PIDController,terminate_condition
-from swing_up_block import SwingUp, SwingUpAndBalance
 
+from packages.controllers.PID import PIDController
 from packages.controllers.custom import SwingUp
-from packages.controllers.PID.optimizers import Genetic_PID_AngleOnly, Zigler_Nikols
+from packages.controllers.custom.swing_up_block import SwingUpAndBalance
 from packages.simulation.CO import (
     ControllerConfig,
     NoiseForce,
@@ -19,33 +19,53 @@ from packages.simulation.CO import (
 )
 from packages.simulation.GUI import PendulumViewer
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Конфигурация физической модели (тележка + двухзвенный маятник)
+# ═══════════════════════════════════════════════════════════════════════════
+
 PLANT_CONFIG = PlantConfig(
-    M=1.0,                # масса тележки, кг (реалистично для стенда с ремнём)
-    m1=0.23,              # масса маятника, кг (стандарт: 0.2–0.25 кг)
-    m2=0.0,
-    l1=0.4,               # длина маятника, м (0.3–0.45 м — стандарт)
-    l2=0.0,
-    L1=0.2,               # ЦМ на середине стержня
-    J1=0.0031,            # момент инерции (1/12 * m * l^2 = 1/12*0.23*0.4^2)
-    J2=0.0,
+    # === Тележка ===
+    M=1.0,
+
+    # === Нижнее звено ===
+    m1=0.5,
+    l1=0.3,
+    b_1=0.03,
+
+    # === Верхнее звено ===
+    m2=0.5,
+    l2=0.3,
+    b_2=0.03,
+
+    # === Общие ===
     g=-9.81,
-    b_c=0.1,              # трение тележки, Н·с/м
-    b_1=0.005,             # трение в шарнире, Н·м·с/рад
-    b_2=0.0,
-    single_pendulum_mode=True,
+    b_c=0.1,
+
+    # === Режимы ===
+    single_pendulum_mode=False,
     backslash_mode=False,
-    init_q=np.array([0.0, 0.0, 0.0]),
+
+    # === Начальное состояние ===
+    init_q=np.array([0.0, np.pi, 0.0]),
     init_dq=np.array([0.0, 0.0, 0.0]),
     dt=0.0001,
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Конфигурация датчиков
+# ═══════════════════════════════════════════════════════════════════════════
+
 SENSOR_CONFIG = SensorConfig(
-    encoder_resolution_1=4096,     # 14 бит — 16384 отсчёта на оборот (~0.022°)
+    encoder_resolution_1=4096,     # 12 бит — 4096 отсчётов на оборот
     encoder_resolution_2=4096,
-    cart_sensor_resolution=0.0001, # 0.05 мм
+    cart_sensor_resolution=0.0001, # 0.1 мм
     noise_std_q=(0.0005, 0.002, 0.002),   # ~0.03° по углам
     noise_std_dq=(0.005, 0.01, 0.01),     # скорости
 )
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Конфигурация контроллера
+# ═══════════════════════════════════════════════════════════════════════════
 
 CONTROLLER_CONFIG = ControllerConfig(
     dt=0.001,
@@ -54,37 +74,35 @@ CONTROLLER_CONFIG = ControllerConfig(
     filter_cutoff_hz=50.0,
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Точка входа
+# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
 
-    swing_controller = SwingUp(CONTROLLER_CONFIG,150,PLANT_CONFIG)
-    pid_controller = PIDController(CONTROLLER_CONFIG, gains=np.array([80.42,0.0,30.71,-10,-15]))
+    # Контроллеры
+    swing_controller = SwingUp(CONTROLLER_CONFIG, K=150, plant_config=PLANT_CONFIG)
+    pid_controller = PIDController(
+        CONTROLLER_CONFIG,
+        gains=np.array([80.42, 0.0, 30.71, -10, -15]),
+    )
     controller = SwingUpAndBalance(
         CONTROLLER_CONFIG,
         swingup_controller=swing_controller,
-        balance_controller=pid_controller
+        balance_controller=pid_controller,
     )
     controller.set_motor_inertia(time_constant=0.1)
 
+    # Внешнее возмущение и целевое состояние
     NOISE = NoiseForce(mean=0.00, std=0.03)
-    TARGET = np.array([0.0, np.pi, 0.0, 0.0, 0.0, 0.0])
+    TARGET = np.array([0.0, np.pi, 0.0, 0.0, 0.0, 0.0])  # (x, θ₁, θ₂, ẋ, θ̇₁, θ̇₂)
 
-    optimizer = Genetic_PID_AngleOnly()
-    # pid_controller.train(
-    #     plant_config=PLANT_CONFIG,
-    #     sensor_config=SENSOR_CONFIG,
-    #     noise=NOISE,
-    #     optimizer=optimizer,
-    #     target_state=TARGET,
-    #     episode_max_time=30.0,
-    #     terminate_condition=terminate_condition
-    # )
-
-    w = PendulumViewer(
+    # Запуск визуализации
+    viewer = PendulumViewer(
         plant=ObjectOfControl(PLANT_CONFIG),
         sensor_config=SENSOR_CONFIG,
         noise=NOISE,
         target_state=TARGET,
         controller=controller,
     )
-    w.use()
+    viewer.use()

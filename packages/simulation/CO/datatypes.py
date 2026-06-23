@@ -53,8 +53,13 @@ class PlantConfig:
     Конфигурация физических параметров объекта управления (тележка + маятник).
 
     Параметры модели: тележка массы :math:`M` с двухзвенным маятником
-    (массы :math:`m_1,m_2`, длины :math:`l_1,l_2`, расстояние до ЦМ :math:`L_1,L_2`,
-    моменты инерции :math:`J_1,J_2`) в поле тяжести :math:`g`.
+    (массы :math:`m_1,m_2`, длины :math:`l_1,l_2`) в поле тяжести :math:`g`.
+
+    Расстояния до центров масс (:math:`L_1,L_2`) и моменты инерции
+    (:math:`J_1,J_2`) рассчитываются автоматически в предположении,
+    что звенья — однородные стержни:
+        :math:`L_i = l_i / 2`,
+        :math:`J_i = \\frac{1}{12} m_i l_i^2`.
 
     Parameters
     ----------
@@ -68,14 +73,6 @@ class PlantConfig:
         Полная геометрическая длина первого звена (м).
     l2 : float
         Полная геометрическая длина второго звена (м).
-    L1 : float
-        Расстояние от оси вращения тележки до ЦМ первого звена (м).
-    L2 : float
-        Расстояние от оси промежуточного шарнира до ЦМ второго звена (м).
-    J1 : float
-        Собственный момент инерции первого звена относительно его ЦМ (кг·м²).
-    J2 : float
-        Собственный момент инерции второго звена относительно его ЦМ (кг·м²).
     g : float
         Ускорение свободного падения (м/с²).
     b_c : float
@@ -114,10 +111,6 @@ class PlantConfig:
     m2: float = 0.0
     l1: float = 1.0
     l2: float = 0.0
-    L1: float = 0.7
-    L2: float = 0.0
-    J1: float = 0.02
-    J2: float = 0.0
     g: float = 9.81
 
     b_c: float = 0.0
@@ -133,6 +126,22 @@ class PlantConfig:
     init_dq: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0]))
 
     dt: float = 0.0005
+
+    # ── Вычисляемые поля (заполняются в __post_init__) ────────────────
+    L1: float = field(init=False)
+    L2: float = field(init=False)
+    J1: float = field(init=False)
+    J2: float = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Рассчитать L1, L2, J1, J2 на основе m1, m2, l1, l2."""
+        # Для однородного стержня:
+        #   L_i = l_i / 2  — расстояние от оси до центра масс
+        #   J_i = (1/12) * m_i * l_i²  — момент инерции относительно ЦМ
+        object.__setattr__(self, "L1", self.l1 / 2.0)
+        object.__setattr__(self, "L2", self.l2 / 2.0)
+        object.__setattr__(self, "J1", (1.0 / 12.0) * self.m1 * self.l1**2)
+        object.__setattr__(self, "J2", (1.0 / 12.0) * self.m2 * self.l2**2)
 
     def to_dict(self) -> dict:
         """
@@ -181,10 +190,6 @@ class PlantConfig:
             m2=self.m2,
             l1=self.l1,
             l2=self.l2,
-            L1=self.L1,
-            L2=self.L2,
-            J1=self.J1,
-            J2=self.J2,
             g=self.g,
             b_c=self.b_c,
             b_1=self.b_1,

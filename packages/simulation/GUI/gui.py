@@ -459,7 +459,11 @@ class PendulumViewer:
         pygame.draw.line(self._screen, GRAY, (0, TRACK_Y), (WIDTH, TRACK_Y), 2)
 
         draw_cart(self._screen, cart_x_px, cart_y_px)
-        draw_pendulums(self._screen, cart_x_px, cart_y_px, th1, th2, is_single)
+        draw_pendulums(
+            self._screen, cart_x_px, cart_y_px,
+            th1, th2, is_single,
+            l1=self._plant._l1, l2=self._plant._l2,
+        )
         draw_force_arrow(self._screen, applied_force, cart_x_px, cart_y_px)
 
         # HUD

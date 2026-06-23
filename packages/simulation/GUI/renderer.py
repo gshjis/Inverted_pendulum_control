@@ -36,8 +36,12 @@ class Renderer:
         # Рельс
         pygame.draw.line(self.screen, (100, 100, 100), (0, TRACK_Y), (WIDTH, TRACK_Y), 2)
 
-        draw_cart(self.screen, cart_x_px)
-        draw_pendulums(self.screen, x, th1, th2, is_single)
+        draw_cart(self.screen, cart_x_px, cart_y_px)
+        draw_pendulums(
+            self.screen, cart_x_px, cart_y_px,
+            th1, th2, is_single,
+            l1=plant._l1, l2=plant._l2,
+        )
         draw_force_arrow(self.screen, applied_force, cart_x_px, cart_y_px)
 
         # HUD

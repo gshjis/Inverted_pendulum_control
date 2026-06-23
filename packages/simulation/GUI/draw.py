@@ -41,18 +41,35 @@ def draw_cart(screen: pygame.Surface, cart_x_px: int, cart_y_px: int) -> None:
         pygame.draw.circle(screen, WHITE, (cart_x_px + offset, cart_y_px + WHEEL_R), WHEEL_R, 2)
 
 
-def draw_pendulums(screen: pygame.Surface, cart_x_px: int, cart_y_px: int, th1: float, th2: float, is_single: bool) -> None:
-    """Рисует подвесы относительно пиксельной позиции тележки (cart_x_px, cart_y_px)."""
+def draw_pendulums(
+    screen: pygame.Surface,
+    cart_x_px: int,
+    cart_y_px: int,
+    th1: float,
+    th2: float,
+    is_single: bool,
+    l1: float = 1.0,
+    l2: float = 1.0,
+) -> None:
+    """Рисует подвесы относительно пиксельной позиции тележки (cart_x_px, cart_y_px).
+
+    Parameters
+    ----------
+    l1 : float
+        Реальная длина первого звена (м). Умножается на SCALE для перевода в пиксели.
+    l2 : float
+        Реальная длина второго звена (м). Умножается на SCALE для перевода в пиксели.
+    """
     pivot1 = (cart_x_px, cart_y_px - CART_H // 2)
-    pend1_x = pivot1[0] + 1.0 * SCALE * np.sin(th1)
-    pend1_y = pivot1[1] + 1.0 * SCALE * np.cos(th1)
+    pend1_x = pivot1[0] + l1 * SCALE * np.sin(th1)
+    pend1_y = pivot1[1] + l1 * SCALE * np.cos(th1)
     pygame.draw.line(screen, ORANGE, pivot1, (pend1_x, pend1_y), 4)
     pygame.draw.circle(screen, RED, (int(pend1_x), int(pend1_y)), PEND_R)
 
     if not is_single:
         pivot2 = (pend1_x, pend1_y)
-        pend2_x = pivot2[0] + 1.0 * SCALE * np.sin(th1 + th2)
-        pend2_y = pivot2[1] + 1.0 * SCALE * np.cos(th1 + th2)
+        pend2_x = pivot2[0] + l2 * SCALE * np.sin(th1 + th2)
+        pend2_y = pivot2[1] + l2 * SCALE * np.cos(th1 + th2)
         pygame.draw.line(screen, ORANGE, pivot2, (pend2_x, pend2_y), 4)
         pygame.draw.circle(screen, RED, (int(pend2_x), int(pend2_y)), PEND_R)
 
