@@ -4,8 +4,10 @@ Pygame-визуализация перевёрнутого маятника.
 
 from __future__ import annotations
 
-import sys
+import csv
 import os
+import sys
+from collections import deque
 from typing import Callable
 
 import numpy as np
@@ -23,7 +25,16 @@ from packages.simulation.CO import (
 from .constants import *
 from .dialogs import ask_recording, ask_save_video
 from .recorder import compile_video
-from .draw import draw_cart, draw_pendulums, draw_force_arrow, draw_hud, draw_target_marker, draw_controller_button
+from .draw import (
+    draw_cart,
+    draw_pendulums,
+    draw_force_arrow,
+    draw_hud,
+    draw_sine_graph,
+    draw_error_graph,
+    draw_target_marker,
+    draw_controller_button,
+)
 from .event_controller import EventController
 
 
@@ -116,6 +127,17 @@ class PendulumViewer:
         self._cost_fn: Callable[[np.ndarray, np.ndarray], float] = (
             lambda t, m: float(np.dot(t - m, t - m))
         )
+
+        # Буферы для графиков (deque — для отрисовки, ограниченный размер)
+        self._sin1_history: deque[float] = deque(maxlen=800)
+        self._sin2_history: deque[float] = deque(maxlen=800)
+        self._err_history: deque[float] = deque(maxlen=800)
+
+        # Полная история для CSV-лога (неограниченная)
+        self._csv_time: list[float] = []
+        self._csv_sin1: list[float] = []
+        self._csv_sin2: list[float] = []
+        self._csv_err_x: list[float] = []
 
     # ── Публичный метод ───────────────────────────────────────────────────
 
@@ -277,6 +299,9 @@ class PendulumViewer:
                 except Exception:
                     pass
 
+        # Сохранение CSV-логов
+        self._save_csv()
+
         pygame.quit()
         sys.exit(0)
 
@@ -379,6 +404,40 @@ class PendulumViewer:
         # Fallback: 60 FPS
         return FPS
 
+    def _save_csv(self) -> None:
+        """Сохранить историю симуляции в CSV-файлы."""
+        if not self._csv_time:
+            return
+
+        # sin_data.csv
+        sin_path = os.path.join(os.path.abspath("."), "sin_data.csv")
+        try:
+            with open(sin_path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["time (с)", "sin(theta1)", "sin(theta2)"])
+                for i in range(len(self._csv_time)):
+                    t = self._csv_time[i]
+                    s1 = self._csv_sin1[i]
+                    s2 = self._csv_sin2[i] if i < len(self._csv_sin2) else 0.0
+                    w.writerow([f"{t:.6f}", f"{s1:.6f}", f"{s2:.6f}"])
+            print(f"✓ sin_data.csv сохранён ({len(self._csv_time)} строк)")
+        except Exception as e:
+            print(f"✗ Ошибка сохранения sin_data.csv: {e}")
+
+        # error_data.csv
+        err_path = os.path.join(os.path.abspath("."), "error_data.csv")
+        try:
+            with open(err_path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["time (с)", "error_x (м)"])
+                for i in range(len(self._csv_time)):
+                    t = self._csv_time[i]
+                    e = self._csv_err_x[i] if i < len(self._csv_err_x) else 0.0
+                    w.writerow([f"{t:.6f}", f"{e:.6f}"])
+            print(f"✓ error_data.csv сохранён ({len(self._csv_time)} строк)")
+        except Exception as e:
+            print(f"✗ Ошибка сохранения error_data.csv: {e}")
+
     def _reset(self) -> None:
         """Сброс состояния симуляции."""
         self._plant._q = self._init_q.copy()
@@ -392,6 +451,11 @@ class PendulumViewer:
         self._elapsed_when_terminated = None
         self._sim_accumulator = 0.0
         self._F = 0.0
+        # Очистка буферов графиков
+        self._sin1_history.clear()
+        self._sin2_history.clear()
+        self._err_history.clear()
+        # CSV-логи не очищаем — накапливаем за всё время сессии
 
     def _handle_marker_events(self) -> None:
         """Обработка перетаскивания маркера цели."""
@@ -519,6 +583,41 @@ class PendulumViewer:
         if self._terminated:
             term_surf = self._font.render("СИМУЛЯЦИЯ ОСТАНОВЛЕНА (Пробел - рестарт)", True, RED)
             self._screen.blit(term_surf, (WIDTH // 2 - term_surf.get_width() // 2, HEIGHT // 2))
+
+        # ── Графики ─────────────────────────────────────────────────────
+        # Текущее время симуляции
+        sim_time = self._get_elapsed_time()
+
+        # sin(θ)
+        sin_th1 = np.sin(th1)
+        sin_th2 = np.sin(th2) if not is_single else 0.0
+        self._sin1_history.append(sin_th1)
+        if not is_single:
+            self._sin2_history.append(sin_th2)
+
+        # Ошибка по X
+        err_x = self._target[0] - x
+        self._err_history.append(err_x)
+
+        # Логирование в CSV (полная история)
+        self._csv_time.append(sim_time)
+        self._csv_sin1.append(sin_th1)
+        self._csv_sin2.append(sin_th2)
+        self._csv_err_x.append(err_x)
+
+        # Отрисовка графика sin(θ)
+        draw_sine_graph(
+            self._screen, self._font,
+            list(self._sin1_history),
+            list(self._sin2_history) if not is_single else None,
+            is_single,
+        )
+
+        # Отрисовка графика ошибки
+        draw_error_graph(
+            self._screen, self._font,
+            list(self._err_history),
+        )
 
         pygame.display.flip()
 

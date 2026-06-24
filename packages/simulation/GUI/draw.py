@@ -23,6 +23,21 @@ from .constants import (
     TRACK_Y,
     FORCE_SCALE,
     FPS,
+    SINE_GRAPH_X,
+    SINE_GRAPH_Y,
+    SINE_GRAPH_W,
+    SINE_GRAPH_H,
+    SINE_COLOR,
+    SINE_COLOR2,
+    SINE_BG,
+    SINE_GRID,
+    ERR_GRAPH_X,
+    ERR_GRAPH_Y,
+    ERR_GRAPH_W,
+    ERR_GRAPH_H,
+    ERR_COLOR,
+    ERR_BG,
+    ERR_GRID,
 )
 
 
@@ -114,6 +129,127 @@ def draw_controller_button(screen: pygame.Surface, font: pygame.font.Font, enabl
     label = "CTRL: ON" if enabled else "CTRL: OFF"
     surf = font.render(label, True, (255, 255, 255) if enabled else (210, 210, 210))
     screen.blit(surf, (btn_rect[0] + 10, btn_rect[1] + 6))
+
+
+def draw_sine_graph(
+    screen: pygame.Surface,
+    font: pygame.font.Font,
+    sin_history: list[float],
+    sin2_history: list[float] | None,
+    is_single: bool,
+) -> None:
+    """
+    Осциллограф: скроллирующийся график sin(θ₁) и (опционально) sin(θ₂).
+
+    Размещается в правом верхнем углу (константы SINE_GRAPH_*).
+
+    Parameters
+    ----------
+    sin_history : list[float]
+        История sin(θ₁) — последние N отсчётов.
+    sin2_history : list[float] | None
+        История sin(θ₂) или None для однозвенного режима.
+    is_single : bool
+        Флаг однозвенного режима (не рисуем sin(θ₂)).
+    """
+    gx, gy = SINE_GRAPH_X, SINE_GRAPH_Y
+    gw, gh = SINE_GRAPH_W, SINE_GRAPH_H
+
+    # Фон
+    pygame.draw.rect(screen, SINE_BG, (gx, gy, gw, gh))
+    pygame.draw.rect(screen, SINE_GRID, (gx, gy, gw, gh), 1)
+
+    # Сетка: нулевая линия и ±0.5
+    zero_y = gy + gh // 2
+    pygame.draw.line(screen, SINE_GRID, (gx, zero_y), (gx + gw, zero_y), 1)
+    for frac in (0.25, 0.75):
+        y = gy + int(gh * frac)
+        pygame.draw.line(screen, SINE_GRID, (gx, y), (gx + gw, y), 1)
+
+    # Подпись оси Y
+    label = font.render("sin(θ)", True, SINE_GRID)
+    screen.blit(label, (gx + 4, gy + 2))
+
+    if not sin_history:
+        return
+
+    # Масштаб: вся ширина графика = вся история
+    n = len(sin_history)
+    step_x = gw / max(n - 1, 1)
+
+    def _draw_trace(history: list[float], color: tuple[int, int, int]) -> None:
+        points: list[tuple[int, int]] = []
+        for i, val in enumerate(history):
+            x = gx + int(i * step_x)
+            # val в [-1, 1] → y в [gy, gy+gh]
+            y = zero_y - int(val * (gh // 2))
+            y = int(np.clip(y, gy + 1, gy + gh - 1))
+            points.append((x, y))
+        if len(points) > 1:
+            pygame.draw.lines(screen, color, False, points, 2)
+
+    # Первое звено — cyan
+    _draw_trace(sin_history, SINE_COLOR)
+
+    # Второе звено — orange (если двухзвенный режим)
+    if not is_single and sin2_history:
+        _draw_trace(sin2_history, SINE_COLOR2)
+
+
+def draw_error_graph(
+    screen: pygame.Surface,
+    font: pygame.font.Font,
+    err_history: list[float],
+) -> None:
+    """
+    График ошибки положения тележки: e = target_x - current_x.
+
+    Размещается под графиком sin(θ) (константы ERR_GRAPH_*).
+
+    Parameters
+    ----------
+    err_history : list[float]
+        История ошибки по X (м) — последние N отсчётов.
+    """
+    gx, gy = ERR_GRAPH_X, ERR_GRAPH_Y
+    gw, gh = ERR_GRAPH_W, ERR_GRAPH_H
+
+    # Фон
+    pygame.draw.rect(screen, ERR_BG, (gx, gy, gw, gh))
+    pygame.draw.rect(screen, ERR_GRID, (gx, gy, gw, gh), 1)
+
+    # Нулевая линия
+    zero_y = gy + gh // 2
+    pygame.draw.line(screen, ERR_GRID, (gx, zero_y), (gx + gw, zero_y), 1)
+    for frac in (0.25, 0.75):
+        y = gy + int(gh * frac)
+        pygame.draw.line(screen, ERR_GRID, (gx, y), (gx + gw, y), 1)
+
+    # Подпись
+    label = font.render("err X (м)", True, ERR_GRID)
+    screen.blit(label, (gx + 4, gy + 2))
+
+    if not err_history:
+        return
+
+    # Автомасштаб по Y: ищем макс. абсолютное значение
+    max_abs = max(abs(v) for v in err_history) if err_history else 1.0
+    if max_abs < 1e-6:
+        max_abs = 1.0  # защита от деления на ноль
+
+    n = len(err_history)
+    step_x = gw / max(n - 1, 1)
+
+    points: list[tuple[int, int]] = []
+    for i, val in enumerate(err_history):
+        x = gx + int(i * step_x)
+        # val в [-max_abs, max_abs] → y в [gy, gy+gh]
+        y = zero_y - int((val / max_abs) * (gh // 2))
+        y = int(np.clip(y, gy + 1, gy + gh - 1))
+        points.append((x, y))
+
+    if len(points) > 1:
+        pygame.draw.lines(screen, ERR_COLOR, False, points, 2)
 
 
 def draw_target_marker(screen: pygame.Surface, cart_x_px: int, cart_y_px: int, color: Tuple[int, int, int], w: int, h: int, value_str: str) -> None:

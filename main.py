@@ -42,11 +42,11 @@ PLANT_CONFIG = PlantConfig(
     b_c=0.1,
 
     # === Режимы ===
-    single_pendulum_mode=False,
+    single_pendulum_mode=True,
     backslash_mode=False,
 
     # === Начальное состояние ===
-    init_q=np.array([0.0, np.pi, 0.0]),
+    init_q=np.array([0.0,0, 0.0]),
     init_dq=np.array([0.0, 0.0, 0.0]),
     dt=0.0001,
 )
